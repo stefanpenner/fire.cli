@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"github.com/stefanpenner/fire.cli/internal/picker"
+	"github.com/stefanpenner/fire.cli/internal/render"
 	"github.com/stefanpenner/fire.cli/internal/tui"
 )
 
@@ -28,7 +29,8 @@ func (app *App) runTUI() error {
 	if !picker.Interactive(app.Out) {
 		return errors.New("the dashboard needs an interactive terminal; use the subcommands (e.g. `fire devices`) when piping")
 	}
-	m := tui.NewModel(tuiSource{app.Client}, app.now)
+	m := tui.NewModel(tuiSource{app.Client}, app.now).
+		WithColor(render.ColorEnabled(app.Out, app.NoColor))
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	return err

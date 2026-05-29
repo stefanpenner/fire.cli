@@ -17,6 +17,26 @@ type Styles struct {
 	Modal    lipgloss.Style
 }
 
+// PlainStyles returns a no-color style set for NO_COLOR / non-color terminals.
+// Hierarchy survives via bold and reverse-video (the selected row) rather than
+// hue, so the dashboard stays legible without ANSI colors.
+func PlainStyles() Styles {
+	bold := lipgloss.NewStyle().Bold(true)
+	plain := lipgloss.NewStyle()
+	return Styles{
+		Title:    bold,
+		Subtle:   plain,
+		Selected: lipgloss.NewStyle().Reverse(true).Bold(true),
+		Online:   bold,
+		Offline:  plain,
+		Header:   bold,
+		Footer:   plain,
+		Status:   bold,
+		ErrText:  bold,
+		Modal:    lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1),
+	}
+}
+
 // DefaultStyles returns the standard color styles.
 func DefaultStyles() Styles {
 	return Styles{

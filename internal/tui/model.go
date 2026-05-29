@@ -189,6 +189,17 @@ func NewModel(ds DataSource, now func() time.Time) Model {
 	}
 }
 
+// WithColor selects colored or plain (NO_COLOR-friendly) styles. Chainable on
+// the constructor: NewModel(ds, now).WithColor(render.ColorEnabled(...)).
+func (m Model) WithColor(enabled bool) Model {
+	if enabled {
+		m.styles = DefaultStyles()
+	} else {
+		m.styles = PlainStyles()
+	}
+	return m
+}
+
 // Init kicks off the first device load.
 func (m Model) Init() tea.Cmd { return m.loadCmd() }
 

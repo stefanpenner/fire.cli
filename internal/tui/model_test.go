@@ -675,6 +675,31 @@ func TestDataView_EscReturnsToDevices(t *testing.T) {
 	assert.Equal(t, deviceView, m.view)
 }
 
+func TestPlainStyles_UsesReverseSelection(t *testing.T) {
+	// Without color, the selected row relies on reverse video; the colored set
+	// uses a background instead.
+	assert.True(t, PlainStyles().Selected.GetReverse())
+	assert.False(t, DefaultStyles().Selected.GetReverse())
+	// Hierarchy survives via bold in the plain set.
+	assert.True(t, PlainStyles().Title.GetBold())
+}
+
+func TestWithColor_AppliesStyleSet(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices()}
+
+	plain := NewModel(ds, fixedNow).WithColor(false)
+	assert.True(t, plain.styles.Selected.GetReverse(), "no-color model uses reverse selection")
+
+	colored := NewModel(ds, fixedNow).WithColor(true)
+	assert.False(t, colored.styles.Selected.GetReverse(), "colored model keeps its background selection")
+
+	// Plain styling still renders content and the selection marker.
+	nm, _ := plain.Update(devicesMsg{devices: ds.devices})
+	v := nm.(Model).View()
+	assert.Contains(t, v, "Old Laptop")
+	assert.Contains(t, v, "❯")
+}
+
 func TestBlock_EmptyListNoCrash(t *testing.T) {
 	ds := &fakeDS{}
 	m := loaded(ds)
