@@ -2,13 +2,36 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/stefanpenner/fire.cli/internal/picker"
 )
+
+// resolveOrPick turns args[0] into a MAC, or—when no device arg is given and a
+// terminal is available—opens the fuzzy picker. Returns "" with a nil error
+// when the user cancels the picker, so callers can exit cleanly.
+func resolveOrPick(app *App, idx *deviceIndex, args []string, prompt string) (string, error) {
+	if len(args) >= 1 {
+		mac := idx.resolveMAC(args[0])
+		if mac == "" {
+			return "", fmt.Errorf("no device matches %q; run `fire devices` to list devices (name, IP, or MAC all work)", args[0])
+		}
+		return mac, nil
+	}
+	if !picker.Interactive(app.Err) {
+		return "", errors.New("device required: pass a name/IP/MAC, or run in a terminal to pick one interactively")
+	}
+	mac, err := app.pickDevice(idx, prompt)
+	if errors.Is(err, picker.ErrCancelled) {
+		return "", nil
+	}
+	return mac, err
+}
 
 // completeDevice is a cobra completion function offering device names and IPs
 // for arguments that take a device (traffic, block, unblock). It queries the
@@ -56,6 +79,13 @@ type deviceIndex struct {
 	nameByMAC map[string]string // upper MAC → friendly name
 	macByIP   map[string]string
 	macByName map[string]string // lower name → upper MAC
+	picks     []pickItem        // ordered list for the interactive picker
+}
+
+// pickItem is one selectable device: a display string and the MAC it resolves to.
+type pickItem struct {
+	mac     string
+	display string
 }
 
 // loadDevices fetches the device list once for resolution + display. On error
@@ -79,8 +109,40 @@ func loadDevices(ctx context.Context, app *App) *deviceIndex {
 		if d.IP != "" {
 			idx.macByIP[d.IP] = mac
 		}
+		// Picker display includes name, IP and MAC so any of them is fuzzy-searchable.
+		display := strings.TrimSpace(strings.Join(nonEmpty(d.Name, d.IP, mac), "  "))
+		idx.picks = append(idx.picks, pickItem{mac: mac, display: display})
 	}
 	return idx
+}
+
+// nonEmpty returns the non-empty arguments, in order.
+func nonEmpty(vals ...string) []string {
+	out := make([]string, 0, len(vals))
+	for _, v := range vals {
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// pickDevice runs the interactive fuzzy finder over the known devices and
+// returns the chosen MAC. picker.ErrCancelled is propagated for the caller to
+// treat as a clean abort.
+func (a *App) pickDevice(idx *deviceIndex, prompt string) (string, error) {
+	if len(idx.picks) == 0 {
+		return "", fmt.Errorf("no devices to choose from")
+	}
+	items := make([]string, len(idx.picks))
+	for i, p := range idx.picks {
+		items[i] = p.display
+	}
+	i, err := picker.Select(a.Err, prompt, items, 12)
+	if err != nil {
+		return "", err
+	}
+	return idx.picks[i].mac, nil
 }
 
 // resolveMAC maps an identifier (MAC, IP, or name substring) to an upper MAC.

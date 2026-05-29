@@ -107,6 +107,14 @@ func TestTraffic_UnknownDevice(t *testing.T) {
 	assert.Contains(t, err.Error(), "fire devices") // error points to discovery
 }
 
+func TestTraffic_NoArgNonInteractive(t *testing.T) {
+	// In tests app.Err is a buffer (not a TTY), so no-arg must error rather
+	// than trying to launch the picker.
+	_, _, err := exec(t, &fakeClient{}, "traffic")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "device required")
+}
+
 func TestTraffic_Completion(t *testing.T) {
 	client := &fakeClient{devices: []firewalla.Device{
 		{Name: "Phone", IP: "192.0.2.10", MAC: "AA:BB:CC:DD:EE:01"},

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -22,13 +21,16 @@ func newTrafficCmd(app *App) *cobra.Command {
 			"<device> and [peer] accept a MAC, IP, or device name (run `fire devices`\n" +
 			"to see them, or tab-complete). Give a peer (or --with) to filter to traffic\n" +
 			"with that endpoint, e.g. between two devices.",
-		Args:              cobra.RangeArgs(1, 2),
+		Args:              cobra.RangeArgs(0, 2),
 		ValidArgsFunction: app.completeDevice,
 		RunE: func(c *cobra.Command, args []string) error {
 			idx := loadDevices(c.Context(), app)
-			mac := idx.resolveMAC(args[0])
+			mac, err := resolveOrPick(app, idx, args, "Traffic for device:")
+			if err != nil {
+				return err
+			}
 			if mac == "" {
-				return fmt.Errorf("no device matches %q; run `fire devices` to list devices (name, IP, or MAC all work)", args[0])
+				return nil // user cancelled the picker
 			}
 			if len(args) == 2 {
 				with = args[1]

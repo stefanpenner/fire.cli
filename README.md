@@ -45,6 +45,11 @@ fire rules rm 215 --confirm           # delete a rule (also: enable/disable <id>
 fire redis keys 'policy:*'            # escape hatch: raw redis-cli on the box
 ```
 
+Run `traffic`, `block`, or `unblock` with **no device argument** in a terminal
+and an interactive fuzzy finder opens over your devices (type to filter on name,
+IP, or MAC; ↑/↓ to move; enter to select; esc to cancel). In a pipe/script it
+falls back to requiring an explicit argument.
+
 Mutating commands (`block`, `unblock`, `rules add|rm|enable|disable`) print what
 they will do and require `--confirm` to apply. They go through Firewalla's own
 PolicyManager so changes are enforced exactly like the app, not just written to
