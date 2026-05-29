@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stefanpenner/fire.cli/internal/firewalla"
+	"github.com/stefanpenner/fire.cli/internal/picker"
 	"github.com/stefanpenner/fire.cli/internal/render"
 	"github.com/stefanpenner/fire.cli/internal/transport"
 )
@@ -75,6 +76,14 @@ func NewRootCmd(app *App) *cobra.Command {
 		SilenceErrors:     true,
 		Version:           Version,
 		PersistentPreRunE: app.connect,
+		// Bare `fire` in a terminal launches the interactive dashboard;
+		// piped/redirected, it falls back to printing help.
+		RunE: func(c *cobra.Command, _ []string) error {
+			if picker.Interactive(app.Out) {
+				return app.runTUI()
+			}
+			return c.Help()
+		},
 	}
 	root.SetOut(app.Out)
 	root.SetErr(app.Err)
@@ -99,6 +108,7 @@ func NewRootCmd(app *App) *cobra.Command {
 		newUnblockCmd(app),
 		newStatusCmd(app),
 		newRedisCmd(app),
+		newTUICmd(app),
 	)
 	return root
 }
