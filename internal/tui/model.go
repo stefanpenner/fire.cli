@@ -116,9 +116,10 @@ type Model struct {
 
 	view viewMode // which list is showing
 
-	devices []firewalla.Device // sorted: online first, then most-recent
-	visible []int              // indices into devices after the active filter
-	cursor  int                // index into visible
+	devices    []firewalla.Device // sorted: online first, then most-recent
+	visible    []int              // indices into devices after the active filter
+	cursor     int                // index into visible
+	onlineOnly bool               // when set, hide offline devices
 
 	rules        []firewalla.Rule
 	ruleCursor   int
@@ -443,6 +444,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.switchTo(wanView)
 	case key.Matches(msg, m.keys.Data):
 		return m.switchTo(dataView)
+	case key.Matches(msg, m.keys.OnlineOnly):
+		m.onlineOnly = !m.onlineOnly
+		m.refilter()
 	case key.Matches(msg, m.keys.Search):
 		m.searching = true
 		m.status = ""
@@ -833,8 +837,12 @@ func (m *Model) setDevices(devs []firewalla.Device) {
 // the cursor.
 func (m *Model) refilter() {
 	q := strings.ToLower(strings.TrimSpace(m.search.Value()))
+	now := m.now()
 	m.visible = m.visible[:0]
 	for i, d := range m.devices {
+		if m.onlineOnly && !d.SeenWithin(onlineWindow, now) {
+			continue
+		}
 		if q == "" || matchesQuery(d, q) {
 			m.visible = append(m.visible, i)
 		}

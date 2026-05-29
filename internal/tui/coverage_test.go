@@ -179,6 +179,37 @@ type assertErr string
 func (e assertErr) Error() string { return string(e) }
 
 // A tea.WindowSizeMsg resizes the model.
+func TestOnlineOnlyFilter(t *testing.T) {
+	// sampleDevices: phone + laptop online (within 5m of fixedNow), hot tub offline.
+	m := loaded(&fakeDS{devices: sampleDevices()})
+	require.Len(t, m.visible, 3)
+
+	nm, _ := m.Update(runeKey("o"))
+	m = nm.(Model)
+	assert.True(t, m.onlineOnly)
+	assert.Len(t, m.visible, 2, "offline hot tub hidden")
+	assert.Contains(t, m.View(), "online only")
+
+	// Composes with search: filter to "example" keeps only the online "Example Phone".
+	nm, _ = m.Update(runeKey("/"))
+	m = nm.(Model)
+	for _, r := range "example" {
+		nm, _ = m.Update(runeKey(string(r)))
+		m = nm.(Model)
+	}
+	require.Len(t, m.visible, 1)
+	d, _ := m.SelectedDevice()
+	assert.Equal(t, "Example Phone", d.Name)
+
+	// Toggling off (need to leave search first) restores all devices.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc}) // exit search, clears query
+	m = nm.(Model)
+	nm, _ = m.Update(runeKey("o")) // online-only off
+	m = nm.(Model)
+	assert.False(t, m.onlineOnly)
+	assert.Len(t, m.visible, 3)
+}
+
 func TestWindowSize(t *testing.T) {
 	m := loaded(&fakeDS{devices: sampleDevices()})
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})

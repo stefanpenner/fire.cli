@@ -86,8 +86,11 @@ func (m Model) headerView() string {
 		}
 	}
 	title := m.styles.Title.Render("🔥 fire") + m.styles.Subtle.Render("  "+host)
-	counts := m.styles.Subtle.Render(fmt.Sprintf("%d devices • %d online", len(m.devices), online))
-	return title + "   " + counts
+	countText := fmt.Sprintf("%d devices • %d online", len(m.devices), online)
+	if m.onlineOnly {
+		countText += " • online only"
+	}
+	return title + "   " + m.styles.Subtle.Render(countText)
 }
 
 func (m Model) listView() string {

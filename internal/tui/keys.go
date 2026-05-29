@@ -4,18 +4,19 @@ import "github.com/charmbracelet/bubbles/key"
 
 // KeyMap defines all key bindings for the dashboard.
 type KeyMap struct {
-	Up      key.Binding
-	Down    key.Binding
-	GoTop   key.Binding
-	GoBot   key.Binding
-	Search  key.Binding
-	Block   key.Binding
-	Unblock key.Binding
-	Reload  key.Binding
-	Help    key.Binding
-	Quit    key.Binding
-	Enter   key.Binding
-	Cancel  key.Binding
+	Up         key.Binding
+	Down       key.Binding
+	GoTop      key.Binding
+	GoBot      key.Binding
+	Search     key.Binding
+	OnlineOnly key.Binding
+	Block      key.Binding
+	Unblock    key.Binding
+	Reload     key.Binding
+	Help       key.Binding
+	Quit       key.Binding
+	Enter      key.Binding
+	Cancel     key.Binding
 
 	// rules view
 	Rules       key.Binding
@@ -36,18 +37,19 @@ type KeyMap struct {
 // DefaultKeyMap returns the default key bindings.
 func DefaultKeyMap() KeyMap {
 	return KeyMap{
-		Up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
-		Down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
-		GoTop:   key.NewBinding(key.WithKeys("g", "home"), key.WithHelp("g", "top")),
-		GoBot:   key.NewBinding(key.WithKeys("G", "end"), key.WithHelp("G", "bottom")),
-		Search:  key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
-		Block:   key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "block")),
-		Unblock: key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "unblock")),
-		Reload:  key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reload")),
-		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
-		Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
-		Enter:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
-		Cancel:  key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
+		Up:         key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
+		Down:       key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+		GoTop:      key.NewBinding(key.WithKeys("g", "home"), key.WithHelp("g", "top")),
+		GoBot:      key.NewBinding(key.WithKeys("G", "end"), key.WithHelp("G", "bottom")),
+		Search:     key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
+		OnlineOnly: key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "online only")),
+		Block:      key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "block")),
+		Unblock:    key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "unblock")),
+		Reload:     key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reload")),
+		Help:       key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+		Quit:       key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		Enter:      key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
+		Cancel:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
 
 		Rules:       key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "rules")),
 		RuleEnable:  key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "enable")),
@@ -90,7 +92,7 @@ func (k KeyMap) AlarmsHelp() string {
 
 // ShortHelp is the one-line footer help for normal mode.
 func (k KeyMap) ShortHelp() string {
-	return "↑↓ nav • enter detail • / search • b block • u unblock • R rules • A alarms • N nets • W wan • D data • ? help • q quit"
+	return "↑↓ nav • enter detail • / search • o online • b block • u unblock • R rules • A alarms • N nets • W wan • D data • ? help • q quit"
 }
 
 // SearchHelp is the footer help shown while typing a search.
@@ -105,6 +107,7 @@ func (k KeyMap) FullHelp() [][2]string {
 		{"g / G", "Jump to top / bottom"},
 		{"enter", "Device detail (traffic)"},
 		{"/", "Search devices (name, IP, MAC)"},
+		{"o", "Toggle online-only filter"},
 		{"b", "Block selected device"},
 		{"u", "Unblock selected device"},
 		{"R", "Rules view (e/d/x to enable/disable/delete)"},

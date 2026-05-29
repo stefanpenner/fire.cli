@@ -5,6 +5,7 @@
 │   g / G           Jump to top / bottom                        │
 │   enter           Device detail (traffic)                     │
 │   /               Search devices (name, IP, MAC)              │
+│   o               Toggle online-only filter                   │
 │   b               Block selected device                       │
 │   u               Unblock selected device                     │
 │   R               Rules view (e/d/x to enable/disable/delete) │
