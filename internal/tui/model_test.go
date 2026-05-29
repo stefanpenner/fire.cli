@@ -149,18 +149,26 @@ func TestSearch_FiltersAndSelects(t *testing.T) {
 	assert.Len(t, m.visible, 3)
 }
 
-func TestBlock_IssuesMacRule(t *testing.T) {
+func TestBlock_ConfirmIssuesMacRule(t *testing.T) {
 	ds := &fakeDS{devices: sampleDevices()}
 	m := loaded(ds) // cursor on Old Laptop (online, most-recently-active → first)
 
+	// b stages the action but must NOT mutate yet.
 	nm, cmd := m.Update(runeKey("b"))
 	m = nm.(Model)
+	assert.Nil(t, cmd, "block should not fire before confirmation")
+	require.NotNil(t, m.pending)
+	assert.Contains(t, m.View(), "Block Old Laptop?")
+	assert.Equal(t, 0, ds.createCnt)
+
+	// y confirms and fires the rule.
+	nm, cmd = m.Update(runeKey("y"))
+	m = nm.(Model)
 	require.NotNil(t, cmd)
-	msg := cmd() // run the action
-	am, ok := msg.(actionMsg)
+	assert.Nil(t, m.pending)
+	am, ok := cmd().(actionMsg)
 	require.True(t, ok)
 	require.NoError(t, am.err)
-
 	assert.Equal(t, 1, ds.createCnt)
 	assert.Equal(t, "block", ds.gotSpec.Action)
 	assert.Equal(t, "mac", ds.gotSpec.Type)
@@ -168,10 +176,28 @@ func TestBlock_IssuesMacRule(t *testing.T) {
 	assert.Contains(t, am.text, "blocked Old Laptop")
 }
 
-func TestUnblock_DeletesMatching(t *testing.T) {
+func TestBlock_CancelDoesNotMutate(t *testing.T) {
 	ds := &fakeDS{devices: sampleDevices()}
 	m := loaded(ds)
-	_, cmd := m.Update(runeKey("u"))
+	nm, _ := m.Update(runeKey("b"))
+	m = nm.(Model)
+	require.NotNil(t, m.pending)
+
+	nm, cmd := m.Update(runeKey("n"))
+	m = nm.(Model)
+	assert.Nil(t, cmd)
+	assert.Nil(t, m.pending, "n cancels the staged action")
+	assert.Equal(t, 0, ds.createCnt, "cancel must not mutate")
+}
+
+func TestUnblock_ConfirmDeletesMatching(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices()}
+	m := loaded(ds)
+	nm, _ := m.Update(runeKey("u"))
+	m = nm.(Model)
+	assert.Contains(t, m.View(), "Unblock Old Laptop?")
+
+	_, cmd := m.Update(runeKey("y"))
 	require.NotNil(t, cmd)
 	am := cmd().(actionMsg)
 	require.NoError(t, am.err)

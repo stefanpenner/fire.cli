@@ -101,6 +101,14 @@ func (m Model) deviceRow(d firewalla.Device, selected bool) string {
 }
 
 func (m Model) footerView() string {
+	if m.pending != nil {
+		verb := "Block"
+		if !m.pending.block {
+			verb = "Unblock"
+		}
+		return m.styles.Status.Render(fmt.Sprintf("%s %s?", verb, m.pending.label)) +
+			m.styles.Footer.Render("   y confirm • n cancel")
+	}
 	if m.err != nil {
 		return m.styles.ErrText.Render(m.err.Error())
 	}

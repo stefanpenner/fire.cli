@@ -58,8 +58,17 @@ type Model struct {
 
 	showHelp bool
 	loading  bool
-	status   string // transient feedback (e.g. "blocked Phone")
+	status   string         // transient feedback (e.g. "blocked Phone")
+	pending  *pendingAction // a block/unblock awaiting y/n confirmation
 	err      error
+}
+
+// pendingAction is a destructive action staged for confirmation, mirroring the
+// CLI's --confirm gate so the dashboard never mutates on a single keypress.
+type pendingAction struct {
+	block bool
+	label string
+	mac   string
 }
 
 // NewModel builds a dashboard over ds. now defaults to time.Now when nil.
@@ -133,6 +142,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// A staged block/unblock awaits y/n before anything else.
+	if m.pending != nil {
+		return m.confirmKey(msg)
+	}
+
 	// Search mode swallows most keys for the text input.
 	if m.searching {
 		switch {
@@ -184,34 +198,57 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.loading, m.status, m.err = true, "", nil
 		return m, m.loadCmd()
 	case key.Matches(msg, m.keys.Block):
-		return m, m.blockCmd(true)
+		m.stageAction(true)
 	case key.Matches(msg, m.keys.Unblock):
-		return m, m.blockCmd(false)
+		m.stageAction(false)
 	}
 	return m, nil
 }
 
-// blockCmd builds a command that blocks (block=true) or unblocks the selected
-// device, then surfaces the outcome as an actionMsg.
-func (m Model) blockCmd(block bool) tea.Cmd {
+// stageAction records a block/unblock for the selected device, to be confirmed
+// with y. A no-op when the (filtered) list is empty.
+func (m *Model) stageAction(block bool) {
 	d, ok := m.SelectedDevice()
 	if !ok {
+		return
+	}
+	m.status = ""
+	m.pending = &pendingAction{block: block, label: deviceLabel(d), mac: d.MAC}
+}
+
+// confirmKey handles y/n (and esc) while an action is staged.
+func (m Model) confirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y", "enter":
+		p := m.pending
+		m.pending = nil
+		return m, m.runAction(p)
+	case "n", "N", "esc", "q", "ctrl+c":
+		m.pending = nil
+	}
+	return m, nil
+}
+
+// runAction performs a confirmed block/unblock and surfaces the outcome as an
+// actionMsg. Returns nil for a nil action (nothing staged).
+func (m Model) runAction(p *pendingAction) tea.Cmd {
+	if p == nil {
 		return nil
 	}
-	ds, label, mac := m.ds, deviceLabel(d), d.MAC
-	spec := firewalla.RuleSpec{Action: "block", Type: "mac", Target: mac, Notes: "via fire tui"}
+	ds := m.ds
+	spec := firewalla.RuleSpec{Action: "block", Type: "mac", Target: p.mac, Notes: "via fire tui"}
 	return func() tea.Msg {
-		if block {
+		if p.block {
 			if _, err := ds.CreateRule(context.Background(), spec); err != nil {
 				return actionMsg{err: err}
 			}
-			return actionMsg{text: "blocked " + label}
+			return actionMsg{text: "blocked " + p.label}
 		}
 		n, err := ds.DeleteMatching(context.Background(), spec)
 		if err != nil {
 			return actionMsg{err: err}
 		}
-		return actionMsg{text: fmt.Sprintf("unblocked %s (%d rule(s))", label, n)}
+		return actionMsg{text: fmt.Sprintf("unblocked %s (%d rule(s))", p.label, n)}
 	}
 }
 
