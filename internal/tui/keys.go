@@ -112,6 +112,7 @@ func (k KeyMap) FullHelp() [][2]string {
 		{"N", "Networks view"},
 		{"W", "WAN/uplinks view"},
 		{"D", "Data-usage view"},
+		{"1–6", "Jump to a view (devices…data)"},
 		{"r", "Reload list"},
 		{"?", "Toggle this help"},
 		{"q / ctrl+c", "Quit"},

@@ -700,6 +700,48 @@ func TestWithColor_AppliesStyleSet(t *testing.T) {
 	assert.Contains(t, v, "❯")
 }
 
+func TestNumberKeys_JumpToViews(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices()}
+	m := loaded(ds)
+
+	cases := []struct {
+		key  string
+		want viewMode
+	}{
+		{"2", ruleView},
+		{"3", alarmView},
+		{"4", networkView},
+		{"5", wanView},
+		{"6", dataView},
+		{"1", deviceView},
+	}
+	for _, c := range cases {
+		nm, cmd := m.Update(runeKey(c.key))
+		m = nm.(Model)
+		assert.Equal(t, c.want, m.view, "key %s", c.key)
+		require.NotNil(t, cmd, "key %s should trigger a load", c.key)
+	}
+
+	// Number keys jump across views, not just from devices: from the rules
+	// view, 3 goes straight to alarms.
+	nm, _ := m.Update(runeKey("2"))
+	m = nm.(Model)
+	nm, _ = m.Update(runeKey("3"))
+	m = nm.(Model)
+	assert.Equal(t, alarmView, m.view)
+}
+
+func TestNumberKeys_IgnoredWhileSearching(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices()}
+	m := loaded(ds)
+	nm, _ := m.Update(runeKey("/"))
+	m = nm.(Model)
+	nm, _ = m.Update(runeKey("2")) // typed into the filter, not a view switch
+	m = nm.(Model)
+	assert.Equal(t, deviceView, m.view)
+	assert.Equal(t, "2", m.search.Value())
+}
+
 func TestBlock_EmptyListNoCrash(t *testing.T) {
 	ds := &fakeDS{}
 	m := loaded(ds)

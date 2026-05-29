@@ -200,6 +200,34 @@ func (m Model) WithColor(enabled bool) Model {
 	return m
 }
 
+// switchTo changes the active view and kicks off its (re)load, clearing any
+// transient status/error. Shared by the letter shortcuts (R/A/N/W/D) and the
+// number keys (1–6).
+func (m Model) switchTo(v viewMode) (tea.Model, tea.Cmd) {
+	m.view = v
+	m.status, m.err = "", nil
+	switch v {
+	case ruleView:
+		m.rulesLoading = true
+		return m, m.loadRulesCmd()
+	case alarmView:
+		m.alarmsLoading = true
+		return m, m.loadAlarmsCmd()
+	case networkView:
+		m.networksLoading = true
+		return m, m.loadNetworksCmd()
+	case wanView:
+		m.wansLoading = true
+		return m, m.loadWansCmd()
+	case dataView:
+		m.dataLoading = true
+		return m, m.loadDataCmd()
+	default:
+		m.loading = true
+		return m, m.loadCmd()
+	}
+}
+
 // Init kicks off the first device load.
 func (m Model) Init() tea.Cmd { return m.loadCmd() }
 
@@ -367,6 +395,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showHelp = true
 		return m, nil
 	}
+	// Number keys jump directly to a view from anywhere.
+	switch msg.String() {
+	case "1":
+		return m.switchTo(deviceView)
+	case "2":
+		return m.switchTo(ruleView)
+	case "3":
+		return m.switchTo(alarmView)
+	case "4":
+		return m.switchTo(networkView)
+	case "5":
+		return m.switchTo(wanView)
+	case "6":
+		return m.switchTo(dataView)
+	}
 
 	switch m.view {
 	case ruleView:
@@ -391,25 +434,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.GoBot):
 		m.cursor = max(len(m.visible)-1, 0)
 	case key.Matches(msg, m.keys.Rules):
-		m.view = ruleView
-		m.rulesLoading, m.status, m.err = true, "", nil
-		return m, m.loadRulesCmd()
+		return m.switchTo(ruleView)
 	case key.Matches(msg, m.keys.Alarms):
-		m.view = alarmView
-		m.alarmsLoading, m.status, m.err = true, "", nil
-		return m, m.loadAlarmsCmd()
+		return m.switchTo(alarmView)
 	case key.Matches(msg, m.keys.Networks):
-		m.view = networkView
-		m.networksLoading, m.status, m.err = true, "", nil
-		return m, m.loadNetworksCmd()
+		return m.switchTo(networkView)
 	case key.Matches(msg, m.keys.WAN):
-		m.view = wanView
-		m.wansLoading, m.status, m.err = true, "", nil
-		return m, m.loadWansCmd()
+		return m.switchTo(wanView)
 	case key.Matches(msg, m.keys.Data):
-		m.view = dataView
-		m.dataLoading, m.status, m.err = true, "", nil
-		return m, m.loadDataCmd()
+		return m.switchTo(dataView)
 	case key.Matches(msg, m.keys.Search):
 		m.searching = true
 		m.status = ""
