@@ -22,6 +22,10 @@ type KeyMap struct {
 	RuleEnable  key.Binding
 	RuleDisable key.Binding
 	RuleDelete  key.Binding
+
+	// alarms view
+	Alarms       key.Binding
+	AlarmArchive key.Binding
 }
 
 // DefaultKeyMap returns the default key bindings.
@@ -44,6 +48,9 @@ func DefaultKeyMap() KeyMap {
 		RuleEnable:  key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "enable")),
 		RuleDisable: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "disable")),
 		RuleDelete:  key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "delete")),
+
+		Alarms:       key.NewBinding(key.WithKeys("A"), key.WithHelp("A", "alarms")),
+		AlarmArchive: key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
 	}
 }
 
@@ -52,9 +59,14 @@ func (k KeyMap) RulesHelp() string {
 	return "↑↓ nav • e enable • d disable • x delete • r reload • esc devices • q quit"
 }
 
+// AlarmsHelp is the one-line footer help shown in the alarms view.
+func (k KeyMap) AlarmsHelp() string {
+	return "↑↓ nav • a archive • x delete • r reload • esc devices • q quit"
+}
+
 // ShortHelp is the one-line footer help for normal mode.
 func (k KeyMap) ShortHelp() string {
-	return "↑↓ nav • enter detail • / search • b block • u unblock • R rules • r reload • ? help • q quit"
+	return "↑↓ nav • enter detail • / search • b block • u unblock • R rules • A alarms • ? help • q quit"
 }
 
 // SearchHelp is the footer help shown while typing a search.
@@ -72,6 +84,7 @@ func (k KeyMap) FullHelp() [][2]string {
 		{"b", "Block selected device"},
 		{"u", "Unblock selected device"},
 		{"R", "Rules view (e/d/x to enable/disable/delete)"},
+		{"A", "Alarms view (a/x to archive/delete)"},
 		{"r", "Reload list"},
 		{"?", "Toggle this help"},
 		{"q / ctrl+c", "Quit"},

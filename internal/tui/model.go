@@ -28,7 +28,13 @@ type DataSource interface {
 	ListRules(ctx context.Context) ([]firewalla.Rule, error)
 	SetRuleDisabled(ctx context.Context, id string, disabled bool) error
 	DeleteRule(ctx context.Context, id string) error
+	ListAlarms(ctx context.Context, limit int) ([]firewalla.Alarm, error)
+	ArchiveAlarm(ctx context.Context, id string) error
+	DeleteAlarm(ctx context.Context, id string) error
 }
+
+// alarmViewLimit caps how many alarms the alarms view loads.
+const alarmViewLimit = 50
 
 // viewMode selects which list the dashboard shows.
 type viewMode int
@@ -36,6 +42,7 @@ type viewMode int
 const (
 	deviceView viewMode = iota
 	ruleView
+	alarmView
 )
 
 // devicesMsg carries the result of a device (re)load.
@@ -48,6 +55,12 @@ type devicesMsg struct {
 type rulesMsg struct {
 	rules []firewalla.Rule
 	err   error
+}
+
+// alarmsMsg carries the result of an alarms (re)load.
+type alarmsMsg struct {
+	alarms []firewalla.Alarm
+	err    error
 }
 
 // actionMsg carries the result of a confirmed mutation.
@@ -83,6 +96,10 @@ type Model struct {
 	rules        []firewalla.Rule
 	ruleCursor   int
 	rulesLoading bool
+
+	alarms        []firewalla.Alarm
+	alarmCursor   int
+	alarmsLoading bool
 
 	search    textinput.Model
 	searching bool
@@ -167,6 +184,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case alarmsMsg:
+		m.alarmsLoading = false
+		m.err = msg.err
+		if msg.err == nil {
+			m.alarms = msg.alarms
+			m.alarmCursor = clampIndex(m.alarmCursor, len(m.alarms))
+		}
+		return m, nil
+
 	case actionMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -174,12 +200,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.text
 		}
 		// Refresh whichever list is showing so it reflects the change.
-		if m.view == ruleView {
+		switch m.view {
+		case ruleView:
 			m.rulesLoading = true
 			return m, m.loadRulesCmd()
+		case alarmView:
+			m.alarmsLoading = true
+			return m, m.loadAlarmsCmd()
+		default:
+			m.loading = true
+			return m, m.loadCmd()
 		}
-		m.loading = true
-		return m, m.loadCmd()
 
 	case detailMsg:
 		if m.detail != nil && m.detail.device.MAC == msg.mac {
@@ -259,8 +290,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if m.view == ruleView {
+	switch m.view {
+	case ruleView:
 		return m.handleRuleKey(msg)
+	case alarmView:
+		return m.handleAlarmKey(msg)
 	}
 
 	switch {
@@ -276,6 +310,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view = ruleView
 		m.rulesLoading, m.status, m.err = true, "", nil
 		return m, m.loadRulesCmd()
+	case key.Matches(msg, m.keys.Alarms):
+		m.view = alarmView
+		m.alarmsLoading, m.status, m.err = true, "", nil
+		return m, m.loadAlarmsCmd()
 	case key.Matches(msg, m.keys.Search):
 		m.searching = true
 		m.status = ""
@@ -450,6 +488,86 @@ func (m Model) ruleCmd(kind, id string) tea.Cmd {
 			return actionMsg{err: err}
 		}
 		return actionMsg{text: ruleVerbs[kind][1] + " rule " + id}
+	}
+}
+
+// ---- alarms view ----
+
+// handleAlarmKey handles keys while the alarms list is showing.
+func (m Model) handleAlarmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Alarms):
+		m.view = deviceView
+	case key.Matches(msg, m.keys.Up):
+		m.alarmCursor = clampIndex(m.alarmCursor-1, len(m.alarms))
+	case key.Matches(msg, m.keys.Down):
+		m.alarmCursor = clampIndex(m.alarmCursor+1, len(m.alarms))
+	case key.Matches(msg, m.keys.GoTop):
+		m.alarmCursor = 0
+	case key.Matches(msg, m.keys.GoBot):
+		m.alarmCursor = max(len(m.alarms)-1, 0)
+	case key.Matches(msg, m.keys.Reload):
+		m.alarmsLoading, m.status, m.err = true, "", nil
+		return m, m.loadAlarmsCmd()
+	case key.Matches(msg, m.keys.AlarmArchive):
+		m.stageAlarm("archive")
+	case key.Matches(msg, m.keys.RuleDelete): // 'x' deletes in any list view
+		m.stageAlarm("delete")
+	}
+	return m, nil
+}
+
+// loadAlarmsCmd fetches recent alarms off the UI goroutine.
+func (m Model) loadAlarmsCmd() tea.Cmd {
+	ds := m.ds
+	return func() tea.Msg {
+		alarms, err := ds.ListAlarms(context.Background(), alarmViewLimit)
+		return alarmsMsg{alarms: alarms, err: err}
+	}
+}
+
+// selectedAlarm returns the alarm under the alarms cursor.
+func (m Model) selectedAlarm() (firewalla.Alarm, bool) {
+	if m.alarmCursor < 0 || m.alarmCursor >= len(m.alarms) {
+		return firewalla.Alarm{}, false
+	}
+	return m.alarms[m.alarmCursor], true
+}
+
+// alarmVerbs maps an action kind to its display verb and result participle.
+var alarmVerbs = map[string][2]string{
+	"archive": {"Archive", "archived"},
+	"delete":  {"Delete", "deleted"},
+}
+
+// stageAlarm stages an archive/delete for the selected alarm.
+func (m *Model) stageAlarm(kind string) {
+	a, ok := m.selectedAlarm()
+	if !ok {
+		return
+	}
+	m.status = ""
+	m.pending = &pendingAction{
+		prompt: fmt.Sprintf("%s alarm %s?", alarmVerbs[kind][0], a.ID),
+		cmd:    m.alarmCmd(kind, a.ID),
+	}
+}
+
+// alarmCmd builds the command for an alarm mutation.
+func (m Model) alarmCmd(kind, id string) tea.Cmd {
+	ds := m.ds
+	return func() tea.Msg {
+		var err error
+		switch kind {
+		case "archive":
+			err = ds.ArchiveAlarm(context.Background(), id)
+		case "delete":
+			err = ds.DeleteAlarm(context.Background(), id)
+		}
+		if err != nil {
+			return actionMsg{err: err}
+		}
+		return actionMsg{text: alarmVerbs[kind][1] + " alarm " + id}
 	}
 }
 

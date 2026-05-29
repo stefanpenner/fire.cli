@@ -17,16 +17,21 @@ type fakeDS struct {
 	devices    []firewalla.Device
 	peers      []firewalla.Peer
 	rules      []firewalla.Rule
+	alarms     []firewalla.Alarm
 	listErr    error
 	trafficErr error
 	createErr  error
 	deleteErr  error
 	rulesErr   error
+	alarmsErr  error
 	gotSpec    firewalla.RuleSpec
 	gotMAC     string
 	gotRuleID  string
 	gotDisable bool
 	gotDelete  string
+	gotAlarmID string
+	gotAlarmOp string
+	gotLimit   int
 	createCnt  int
 	deleteCnt  int
 }
@@ -48,6 +53,18 @@ func (f *fakeDS) SetRuleDisabled(_ context.Context, id string, disabled bool) er
 }
 func (f *fakeDS) DeleteRule(_ context.Context, id string) error {
 	f.gotDelete = id
+	return nil
+}
+func (f *fakeDS) ListAlarms(_ context.Context, limit int) ([]firewalla.Alarm, error) {
+	f.gotLimit = limit
+	return f.alarms, f.alarmsErr
+}
+func (f *fakeDS) ArchiveAlarm(_ context.Context, id string) error {
+	f.gotAlarmID, f.gotAlarmOp = id, "archive"
+	return nil
+}
+func (f *fakeDS) DeleteAlarm(_ context.Context, id string) error {
+	f.gotAlarmID, f.gotAlarmOp = id, "delete"
 	return nil
 }
 func (f *fakeDS) CreateRule(_ context.Context, spec firewalla.RuleSpec) (string, error) {
@@ -418,6 +435,93 @@ func TestRulesView_ActionReloadsRules(t *testing.T) {
 	require.NotNil(t, cmd)
 	_, ok := cmd().(rulesMsg)
 	assert.True(t, ok, "an action in the rules view reloads rules, not devices")
+}
+
+func sampleAlarms() []firewalla.Alarm {
+	return []firewalla.Alarm{
+		{ID: "2297", Type: "Port Scan", Device: "Laptop", Message: "Laptop scanned ports", Time: time.Unix(1700000050, 0)},
+		{ID: "55", Type: "New Device", Device: "Phone", Time: time.Unix(1700000000, 0)},
+	}
+}
+
+func loadedAlarms(ds *fakeDS) Model {
+	m := loaded(ds)
+	nm, _ := m.Update(runeKey("A"))
+	m = nm.(Model)
+	nm, _ = m.Update(alarmsMsg{alarms: ds.alarms})
+	return nm.(Model)
+}
+
+func TestAlarmsView_OpensAndLists(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices(), alarms: sampleAlarms()}
+	m := loaded(ds)
+
+	nm, cmd := m.Update(runeKey("A"))
+	m = nm.(Model)
+	assert.Equal(t, alarmView, m.view)
+	require.NotNil(t, cmd)
+	am, ok := cmd().(alarmsMsg)
+	require.True(t, ok)
+	assert.Equal(t, alarmViewLimit, ds.gotLimit)
+
+	nm, _ = m.Update(am)
+	m = nm.(Model)
+	v := m.View()
+	assert.Contains(t, v, "alarms (2)")
+	assert.Contains(t, v, "Port Scan")
+	assert.Contains(t, v, "2297")
+}
+
+func TestAlarmsView_EscReturnsToDevices(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices(), alarms: sampleAlarms()}
+	m := loadedAlarms(ds)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = nm.(Model)
+	assert.Equal(t, deviceView, m.view)
+	assert.Contains(t, m.View(), "Example Phone")
+}
+
+func TestAlarmsView_ArchiveConfirms(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices(), alarms: sampleAlarms()}
+	m := loadedAlarms(ds) // cursor on alarm 2297
+
+	nm, cmd := m.Update(runeKey("a"))
+	m = nm.(Model)
+	assert.Nil(t, cmd, "archive must confirm first")
+	require.NotNil(t, m.pending)
+	assert.Equal(t, "Archive alarm 2297?", m.pending.prompt)
+
+	nm, cmd = m.Update(runeKey("y"))
+	m = nm.(Model)
+	require.NotNil(t, cmd)
+	am := cmd().(actionMsg)
+	require.NoError(t, am.err)
+	assert.Equal(t, "2297", ds.gotAlarmID)
+	assert.Equal(t, "archive", ds.gotAlarmOp)
+	assert.Contains(t, am.text, "archived alarm 2297")
+}
+
+func TestAlarmsView_DeleteConfirms(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices(), alarms: sampleAlarms()}
+	m := loadedAlarms(ds)
+	nm, _ := m.Update(runeKey("x"))
+	m = nm.(Model)
+	require.NotNil(t, m.pending)
+	assert.Equal(t, "Delete alarm 2297?", m.pending.prompt)
+	nm, cmd := m.Update(runeKey("y"))
+	m = nm.(Model)
+	cmd()
+	assert.Equal(t, "2297", ds.gotAlarmID)
+	assert.Equal(t, "delete", ds.gotAlarmOp)
+}
+
+func TestAlarmsView_ActionReloadsAlarms(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices(), alarms: sampleAlarms()}
+	m := loadedAlarms(ds)
+	_, cmd := m.Update(actionMsg{text: "archived alarm 2297"})
+	require.NotNil(t, cmd)
+	_, ok := cmd().(alarmsMsg)
+	assert.True(t, ok, "an action in the alarms view reloads alarms")
 }
 
 func TestBlock_EmptyListNoCrash(t *testing.T) {

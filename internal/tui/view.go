@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/stefanpenner/fire.cli/internal/firewalla"
 )
@@ -17,6 +18,9 @@ func (m Model) View() string {
 	}
 	if m.view == ruleView {
 		return m.rulesView()
+	}
+	if m.view == alarmView {
+		return m.alarmsView()
 	}
 
 	var b strings.Builder
@@ -246,6 +250,74 @@ func (m Model) ruleRow(r firewalla.Rule, selected bool) string {
 		return m.styles.Title.Render("❯ ") + stStyle.Render(state) + " " + m.styles.Selected.Render(line)
 	}
 	return "  " + stStyle.Render(state) + " " + line
+}
+
+// alarmsView renders the recent-alarms list.
+func (m Model) alarmsView() string {
+	var b strings.Builder
+	b.WriteString(m.styles.Title.Render("🔥 fire") +
+		m.styles.Subtle.Render(fmt.Sprintf("  alarms (%d)", len(m.alarms))))
+	b.WriteString("\n\n")
+
+	now := m.now()
+	switch {
+	case m.alarmsLoading && len(m.alarms) == 0:
+		b.WriteString(m.styles.Subtle.Render("  loading…"))
+	case m.err != nil:
+		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
+	case len(m.alarms) == 0:
+		b.WriteString(m.styles.Subtle.Render("  no alarms"))
+	default:
+		maxRows := m.height - 4
+		if maxRows < 1 {
+			maxRows = 1
+		}
+		start := 0
+		if m.alarmCursor >= maxRows {
+			start = m.alarmCursor - maxRows + 1
+		}
+		end := min(start+maxRows, len(m.alarms))
+		rows := make([]string, 0, end-start)
+		for i := start; i < end; i++ {
+			rows = append(rows, m.alarmRow(m.alarms[i], i == m.alarmCursor, now))
+		}
+		b.WriteString(strings.Join(rows, "\n"))
+	}
+
+	b.WriteString("\n")
+	switch {
+	case m.pending != nil:
+		b.WriteString(m.confirmBar())
+	case m.status != "":
+		b.WriteString(m.styles.Status.Render(m.status) + m.styles.Footer.Render("   "+m.keys.AlarmsHelp()))
+	default:
+		b.WriteString(m.styles.Footer.Render(m.keys.AlarmsHelp()))
+	}
+	return b.String()
+}
+
+func (m Model) alarmRow(a firewalla.Alarm, selected bool, now time.Time) string {
+	when := lastSeen(a.Time, now)
+	desc := a.Message
+	if desc == "" {
+		desc = a.Device
+	}
+	if len(desc) > 32 {
+		desc = desc[:31] + "…"
+	}
+	line := fmt.Sprintf("%-8s %-9s %-18s %-32s", a.ID, when, truncate(a.Type, 18), desc)
+	if selected {
+		return m.styles.Title.Render("❯ ") + m.styles.Selected.Render(line)
+	}
+	return "  " + line
+}
+
+// truncate shortens s to at most n runes, adding an ellipsis when cut.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n-1] + "…"
 }
 
 func (m Model) helpView() string {
