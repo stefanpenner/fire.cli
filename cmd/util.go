@@ -37,24 +37,24 @@ func resolveOrPick(app *App, idx *deviceIndex, args []string, prompt string) (st
 // for arguments that take a device (traffic, block, unblock). It queries the
 // box, so tab-completion doubles as discovery of valid values.
 func (app *App) completeDevice(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-	_ = app.connect(cmd, nil) // completion skips PersistentPreRunE; wire the client
-	if app.Client == nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	devices, err := app.Client.ListDevices(cmd.Context())
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	var out []string
-	for _, d := range devices {
-		if d.Name != "" {
-			out = append(out, d.Name)
+	// nil args: a device may be the first of several positionals (traffic), so
+	// always offer suggestions regardless of how many are already present.
+	return app.completionFor(cmd, nil, func(ctx context.Context) ([]string, error) {
+		devices, err := app.Client.ListDevices(ctx)
+		if err != nil {
+			return nil, err
 		}
-		if d.IP != "" {
-			out = append(out, d.IP)
+		var out []string
+		for _, d := range devices {
+			if d.Name != "" {
+				out = append(out, d.Name)
+			}
+			if d.IP != "" {
+				out = append(out, d.IP)
+			}
 		}
-	}
-	return out, cobra.ShellCompDirectiveNoFileComp
+		return out, nil
+	})
 }
 
 var macRE = regexp.MustCompile(`^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$`)

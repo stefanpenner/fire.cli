@@ -2,13 +2,11 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/stefanpenner/fire.cli/internal/firewalla"
-	"github.com/stefanpenner/fire.cli/internal/picker"
 )
 
 // resolveFeature maps an identifier (key or friendly name, case-insensitive,
@@ -43,21 +41,15 @@ func (app *App) resolveOrPickFeature(ctx context.Context, args []string, prompt 
 		}
 		return f, true, nil
 	}
-	if !picker.Interactive(app.Err) {
-		return firewalla.Feature{}, false, errors.New("feature required: pass a key/name, or run in a terminal to pick one (see `fire features`)")
-	}
-	if len(feats) == 0 {
-		return firewalla.Feature{}, false, errors.New("no features to choose from")
+	if err := app.requireInteractive("feature", "a key/name", "see `fire features`"); err != nil {
+		return firewalla.Feature{}, false, err
 	}
 	items := make([]string, len(feats))
 	for i, f := range feats {
 		items[i] = fmt.Sprintf("%s  (%s)  [%s]", f.Name, onOff(f.Enabled), f.Key)
 	}
-	i, err := picker.Select(app.Err, prompt, items, 12)
-	if errors.Is(err, picker.ErrCancelled) {
-		return firewalla.Feature{}, false, nil
-	}
-	if err != nil {
+	i, err := app.selectIndex("feature", prompt, items)
+	if err != nil || i < 0 {
 		return firewalla.Feature{}, false, err
 	}
 	return feats[i], true, nil
@@ -65,20 +57,15 @@ func (app *App) resolveOrPickFeature(ctx context.Context, args []string, prompt 
 
 // completeFeature offers feature keys annotated with their friendly name.
 func (app *App) completeFeature(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
-	if len(args) >= 1 {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	_ = app.connect(cmd, nil)
-	if app.Client == nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	feats, err := app.Client.ListFeatures(cmd.Context())
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	out := make([]string, 0, len(feats))
-	for _, f := range feats {
-		out = append(out, fmt.Sprintf("%s\t%s (%s)", f.Key, f.Name, onOff(f.Enabled)))
-	}
-	return out, cobra.ShellCompDirectiveNoFileComp
+	return app.completionFor(cmd, args, func(ctx context.Context) ([]string, error) {
+		feats, err := app.Client.ListFeatures(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]string, 0, len(feats))
+		for _, f := range feats {
+			out = append(out, fmt.Sprintf("%s\t%s (%s)", f.Key, f.Name, onOff(f.Enabled)))
+		}
+		return out, nil
+	})
 }

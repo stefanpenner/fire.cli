@@ -2,12 +2,10 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/stefanpenner/fire.cli/internal/picker"
 )
 
 // rulePick is one selectable rule: a display string and the id it resolves to.
@@ -45,25 +43,19 @@ func (app *App) resolveOrPickRule(ctx context.Context, args []string, prompt str
 	if len(args) >= 1 {
 		return args[0], nil
 	}
-	if !picker.Interactive(app.Err) {
-		return "", errors.New("rule required: pass an id, or run in a terminal to pick one (see `fire rules`)")
+	if err := app.requireInteractive("rule", "an id", "see `fire rules`"); err != nil {
+		return "", err
 	}
 	picks, err := loadRulePicks(ctx, app)
 	if err != nil {
 		return "", err
 	}
-	if len(picks) == 0 {
-		return "", errors.New("no rules to choose from")
-	}
 	items := make([]string, len(picks))
 	for i, p := range picks {
 		items[i] = p.display
 	}
-	i, err := picker.Select(app.Err, prompt, items, 12)
-	if errors.Is(err, picker.ErrCancelled) {
-		return "", nil
-	}
-	if err != nil {
+	i, err := app.selectIndex("rule", prompt, items)
+	if err != nil || i < 0 {
 		return "", err
 	}
 	return picks[i].id, nil
@@ -72,21 +64,16 @@ func (app *App) resolveOrPickRule(ctx context.Context, args []string, prompt str
 // completeRule is a cobra completion function offering rule ids annotated with
 // their action/type/target, so tab-completion doubles as discovery.
 func (app *App) completeRule(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
-	if len(args) >= 1 {
-		return nil, cobra.ShellCompDirectiveNoFileComp // id already supplied
-	}
-	_ = app.connect(cmd, nil) // completion skips PersistentPreRunE; wire the client
-	if app.Client == nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	rules, err := app.Client.ListRules(cmd.Context())
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	out := make([]string, 0, len(rules))
-	for _, r := range rules {
-		desc := strings.TrimSpace(fmt.Sprintf("%s %s %s", r.Action, r.Type, r.Target))
-		out = append(out, fmt.Sprintf("%s\t%s", r.ID, desc))
-	}
-	return out, cobra.ShellCompDirectiveNoFileComp
+	return app.completionFor(cmd, args, func(ctx context.Context) ([]string, error) {
+		rules, err := app.Client.ListRules(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]string, 0, len(rules))
+		for _, r := range rules {
+			desc := strings.TrimSpace(fmt.Sprintf("%s %s %s", r.Action, r.Type, r.Target))
+			out = append(out, fmt.Sprintf("%s\t%s", r.ID, desc))
+		}
+		return out, nil
+	})
 }
