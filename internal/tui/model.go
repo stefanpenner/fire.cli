@@ -22,6 +22,7 @@ import (
 type DataSource interface {
 	Host() string
 	ListDevices(ctx context.Context) ([]firewalla.Device, error)
+	Traffic(ctx context.Context, mac string) ([]firewalla.Peer, error)
 	CreateRule(ctx context.Context, spec firewalla.RuleSpec) (string, error)
 	DeleteMatching(ctx context.Context, spec firewalla.RuleSpec) (int, error)
 }
@@ -36,6 +37,13 @@ type devicesMsg struct {
 type actionMsg struct {
 	text string
 	err  error
+}
+
+// detailMsg carries the loaded traffic for a device's detail pane.
+type detailMsg struct {
+	mac   string
+	peers []firewalla.Peer
+	err   error
 }
 
 const onlineWindow = 5 * time.Minute
@@ -60,7 +68,16 @@ type Model struct {
 	loading  bool
 	status   string         // transient feedback (e.g. "blocked Phone")
 	pending  *pendingAction // a block/unblock awaiting y/n confirmation
+	detail   *detailState   // open device detail pane, or nil
 	err      error
+}
+
+// detailState backs the per-device detail pane (its top traffic peers).
+type detailState struct {
+	device  firewalla.Device
+	peers   []firewalla.Peer
+	loading bool
+	err     error
 }
 
 // pendingAction is a destructive action staged for confirmation, mirroring the
@@ -127,6 +144,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		return m, m.loadCmd() // refresh to reflect the change
 
+	case detailMsg:
+		if m.detail != nil && m.detail.device.MAC == msg.mac {
+			m.detail.loading = false
+			m.detail.peers, m.detail.err = msg.peers, msg.err
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -145,6 +169,19 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// A staged block/unblock awaits y/n before anything else.
 	if m.pending != nil {
 		return m.confirmKey(msg)
+	}
+
+	// Detail pane: esc/q/enter closes; block/unblock still work on its device.
+	if m.detail != nil {
+		switch {
+		case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.Enter):
+			m.detail = nil
+		case key.Matches(msg, m.keys.Block):
+			m.stageAction(true)
+		case key.Matches(msg, m.keys.Unblock):
+			m.stageAction(false)
+		}
+		return m, nil
 	}
 
 	// Search mode swallows most keys for the text input.
@@ -197,12 +234,27 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Reload):
 		m.loading, m.status, m.err = true, "", nil
 		return m, m.loadCmd()
+	case key.Matches(msg, m.keys.Enter):
+		if d, ok := m.SelectedDevice(); ok {
+			m.detail = &detailState{device: d, loading: true}
+			m.status = ""
+			return m, m.detailCmd(d)
+		}
 	case key.Matches(msg, m.keys.Block):
 		m.stageAction(true)
 	case key.Matches(msg, m.keys.Unblock):
 		m.stageAction(false)
 	}
 	return m, nil
+}
+
+// detailCmd loads the selected device's traffic peers off the UI goroutine.
+func (m Model) detailCmd(d firewalla.Device) tea.Cmd {
+	ds, mac := m.ds, d.MAC
+	return func() tea.Msg {
+		peers, err := ds.Traffic(context.Background(), mac)
+		return detailMsg{mac: mac, peers: peers, err: err}
+	}
 }
 
 // stageAction records a block/unblock for the selected device, to be confirmed

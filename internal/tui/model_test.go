@@ -14,18 +14,25 @@ import (
 
 // fakeDS is a test DataSource recording block/unblock calls.
 type fakeDS struct {
-	devices   []firewalla.Device
-	listErr   error
-	createErr error
-	deleteErr error
-	gotSpec   firewalla.RuleSpec
-	createCnt int
-	deleteCnt int
+	devices    []firewalla.Device
+	peers      []firewalla.Peer
+	listErr    error
+	trafficErr error
+	createErr  error
+	deleteErr  error
+	gotSpec    firewalla.RuleSpec
+	gotMAC     string
+	createCnt  int
+	deleteCnt  int
 }
 
 func (f *fakeDS) Host() string { return "pi@test" }
 func (f *fakeDS) ListDevices(context.Context) ([]firewalla.Device, error) {
 	return f.devices, f.listErr
+}
+func (f *fakeDS) Traffic(_ context.Context, mac string) ([]firewalla.Peer, error) {
+	f.gotMAC = mac
+	return f.peers, f.trafficErr
 }
 func (f *fakeDS) CreateRule(_ context.Context, spec firewalla.RuleSpec) (string, error) {
 	f.gotSpec, f.createCnt = spec, f.createCnt+1
@@ -234,6 +241,62 @@ func TestQuit(t *testing.T) {
 	_, cmd := m.Update(runeKey("q"))
 	require.NotNil(t, cmd)
 	assert.Equal(t, tea.Quit(), cmd())
+}
+
+func TestDetail_OpensAndLoadsTraffic(t *testing.T) {
+	ds := &fakeDS{
+		devices: sampleDevices(),
+		peers: []firewalla.Peer{
+			{Label: "video.example.com", Kind: "internet", Download: 409600, Upload: 2048},
+			{PeerMAC: "AA:BB:CC:DD:EE:02", Kind: "device", Download: 1024},
+		},
+	}
+	m := loaded(ds)
+
+	// Enter opens the detail pane for the selected device and kicks off a load.
+	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+	require.NotNil(t, m.detail)
+	assert.True(t, m.detail.loading)
+	require.NotNil(t, cmd)
+
+	// The detail load targets the selected device's MAC.
+	msg := cmd()
+	dm, ok := msg.(detailMsg)
+	require.True(t, ok)
+	assert.Equal(t, "AA:BB:CC:DD:EE:03", ds.gotMAC)
+
+	nm, _ = m.Update(dm)
+	m = nm.(Model)
+	assert.False(t, m.detail.loading)
+
+	v := m.View()
+	assert.Contains(t, v, "Old Laptop")        // header
+	assert.Contains(t, v, "video.example.com") // top peer
+	assert.Contains(t, v, "Top traffic")
+}
+
+func TestDetail_EscCloses(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices()}
+	m := loaded(ds)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+	require.NotNil(t, m.detail)
+
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	assert.Nil(t, nm.(Model).detail)
+}
+
+func TestDetail_BlockFromPaneStagesConfirm(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices()}
+	m := loaded(ds)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+	nm, cmd := m.Update(runeKey("b"))
+	m = nm.(Model)
+	assert.Nil(t, cmd, "block from the detail pane still confirms first")
+	require.NotNil(t, m.pending)
+	assert.Equal(t, "AA:BB:CC:DD:EE:03", m.pending.mac)
 }
 
 func TestBlock_EmptyListNoCrash(t *testing.T) {

@@ -38,7 +38,7 @@ func DefaultKeyMap() KeyMap {
 
 // ShortHelp is the one-line footer help for normal mode.
 func (k KeyMap) ShortHelp() string {
-	return "↑↓ nav • / search • b block • u unblock • r reload • ? help • q quit"
+	return "↑↓ nav • enter detail • / search • b block • u unblock • r reload • ? help • q quit"
 }
 
 // SearchHelp is the footer help shown while typing a search.
@@ -51,6 +51,7 @@ func (k KeyMap) FullHelp() [][2]string {
 	return [][2]string{
 		{"↑/k, ↓/j", "Move selection"},
 		{"g / G", "Jump to top / bottom"},
+		{"enter", "Device detail (traffic)"},
 		{"/", "Search devices (name, IP, MAC)"},
 		{"b", "Block selected device"},
 		{"u", "Unblock selected device"},

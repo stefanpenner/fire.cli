@@ -12,6 +12,9 @@ func (m Model) View() string {
 	if m.showHelp {
 		return m.helpView()
 	}
+	if m.detail != nil {
+		return m.detailView()
+	}
 
 	var b strings.Builder
 	b.WriteString(m.headerView())
@@ -119,6 +122,63 @@ func (m Model) footerView() string {
 		return m.styles.Status.Render(m.status) + m.styles.Footer.Render("   "+m.keys.ShortHelp())
 	}
 	return m.styles.Footer.Render(m.keys.ShortHelp())
+}
+
+// detailView renders the per-device pane: identity, status, and top peers.
+func (m Model) detailView() string {
+	d := m.detail.device
+	now := m.now()
+	status := "offline"
+	statusStyle := m.styles.Offline
+	if d.SeenWithin(onlineWindow, now) {
+		status, statusStyle = "online", m.styles.Online
+	}
+
+	var b strings.Builder
+	b.WriteString(m.styles.Title.Render(deviceLabel(d)))
+	b.WriteString("  ")
+	b.WriteString(statusStyle.Render(status))
+	b.WriteString("\n\n")
+	field := func(k, v string) {
+		if v == "" {
+			v = "—"
+		}
+		fmt.Fprintf(&b, "  %-10s %s\n", m.styles.Subtle.Render(k), v)
+	}
+	field("ip", d.IP)
+	field("mac", d.MAC)
+	field("vendor", d.Vendor)
+	field("type", d.Type)
+	field("last seen", lastSeen(d.LastActive, now))
+
+	b.WriteString("\n")
+	b.WriteString(m.styles.Header.Render("  Top traffic"))
+	b.WriteString("\n")
+	switch {
+	case m.detail.loading:
+		b.WriteString(m.styles.Subtle.Render("  loading…"))
+	case m.detail.err != nil:
+		b.WriteString(m.styles.ErrText.Render("  error: " + m.detail.err.Error()))
+	case len(m.detail.peers) == 0:
+		b.WriteString(m.styles.Subtle.Render("  no recent traffic"))
+	default:
+		peers := topPeers(m.detail.peers, 10)
+		for _, p := range peers {
+			label := p.Label
+			if p.Kind == "device" && label == "" {
+				label = p.PeerMAC
+			}
+			if len(label) > 34 {
+				label = label[:33] + "…"
+			}
+			fmt.Fprintf(&b, "  %-34s  ↓%s ↑%s\n", label,
+				humanizeBytes(p.Download), humanizeBytes(p.Upload))
+		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.styles.Footer.Render("b block • u unblock • esc back • q close"))
+	return b.String()
 }
 
 func (m Model) helpView() string {
