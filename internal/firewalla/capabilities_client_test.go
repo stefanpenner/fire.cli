@@ -64,3 +64,25 @@ func TestClient_DataUsage(t *testing.T) {
 	assert.Equal(t, int64(1000000000000), r.PlanTotal)
 	require.Len(t, r.WANs, 2)
 }
+
+func TestClient_ListAlarms(t *testing.T) {
+	fake := transport.NewFake("pi@fire").
+		OnMatch("alarm_active", transport.Result{Stdout: fixture(t, "alarms.txt")})
+	c := New(fake)
+
+	alarms, err := c.ListAlarms(context.Background(), 50)
+	require.NoError(t, err)
+	require.Len(t, alarms, 2)
+	assert.Equal(t, "Port Scan", alarms[0].Type)
+}
+
+func TestClient_ListFeatures(t *testing.T) {
+	fake := transport.NewFake("pi@fire").
+		OnMatch("policy:system", transport.Result{Stdout: fixture(t, "features.txt")})
+	c := New(fake)
+
+	feats, err := c.ListFeatures(context.Background())
+	require.NoError(t, err)
+	require.NotEmpty(t, feats)
+	assert.Contains(t, fake.Commands[0], "policy:system")
+}

@@ -33,6 +33,8 @@ fire networks                         # networks & VLANs (alias: vlans)
 fire wan                              # internet uplinks: dual-WAN role + live health
 fire data                             # data-plan usage this period, per WAN (alias: usage)
 fire rules                            # firewall block/allow rules (--all for disabled)
+fire alarms --limit 20                # recent security alarms (scans, new devices, …)
+fire features                         # which features are on (ad block, VPN, DoH, QoS, …)
 fire traffic "Living Room TV"         # who a device talks to (internet + LAN peers)
 fire traffic phone laptop             # traffic between two devices
 fire traffic phone --with spotify.com # …filtered to a destination

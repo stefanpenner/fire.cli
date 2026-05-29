@@ -23,6 +23,8 @@ type fakeClient struct {
 	wans      []firewalla.WAN
 	dataUsage firewalla.DataUsageReport
 	peers     []firewalla.Peer
+	alarms    []firewalla.Alarm
+	features  []firewalla.Feature
 	rawOut    string
 	err       error
 
@@ -60,6 +62,13 @@ func (f *fakeClient) DataUsage(context.Context) (firewalla.DataUsageReport, erro
 func (f *fakeClient) Traffic(_ context.Context, mac string) ([]firewalla.Peer, error) {
 	f.gotMAC = mac
 	return f.peers, f.err
+}
+func (f *fakeClient) ListAlarms(_ context.Context, limit int) ([]firewalla.Alarm, error) {
+	f.gotLimit = limit
+	return f.alarms, f.err
+}
+func (f *fakeClient) ListFeatures(context.Context) ([]firewalla.Feature, error) {
+	return f.features, f.err
 }
 func (f *fakeClient) Raw(_ context.Context, args string) (string, error) {
 	f.gotRawArgs = args

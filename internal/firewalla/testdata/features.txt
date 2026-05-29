@@ -1,0 +1,14 @@
+adblock
+false
+family
+true
+newDeviceTag
+{"state":false}
+doh
+{"state":false}
+vpn
+{"state":true,"localPort":1194}
+qos
+{"upload":false,"wanConfs":{}}
+monitor
+true

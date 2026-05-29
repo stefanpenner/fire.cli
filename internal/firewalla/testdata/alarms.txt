@@ -1,0 +1,32 @@
+@@ALARM@@ 2297
+aid
+2297
+type
+ALARM_BRO_NOTICE
+alarmTimestamp
+1700000871.18
+p.noticeType
+Scan::Port_Scan
+message
+Example Laptop was scanning ports of 203.0.113.5.
+p.device.name
+Example Laptop
+p.device.mac
+AA:BB:CC:DD:EE:01
+state
+active
+@@ALARM@@ 2295
+aid
+2295
+type
+ALARM_NEW_DEVICE
+alarmTimestamp
+1700000500.0
+message
+New device Example Phone joined the network.
+p.device.name
+Example Phone
+p.device.mac
+AA:BB:CC:DD:EE:02
+state
+active

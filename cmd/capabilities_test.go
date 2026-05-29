@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/stefanpenner/fire.cli/internal/firewalla"
 	"github.com/stretchr/testify/assert"
@@ -103,6 +104,30 @@ func TestTraffic_FilterBetweenTwoDevices(t *testing.T) {
 func TestTraffic_UnknownDevice(t *testing.T) {
 	_, _, err := exec(t, &fakeClient{}, "traffic", "Nonexistent")
 	require.Error(t, err)
+}
+
+func TestAlarms_Table(t *testing.T) {
+	client := &fakeClient{alarms: []firewalla.Alarm{
+		{ID: "2297", Type: "Port Scan", Device: "Laptop", Message: "Laptop was scanning ports", Time: time.Unix(1700000050, 0)},
+	}}
+	out, _, err := exec(t, client, "alarms", "--limit", "10")
+	require.NoError(t, err)
+	assert.Equal(t, 10, client.gotLimit)
+	assert.Contains(t, out, "Port Scan")
+	assert.Contains(t, out, "Laptop")
+}
+
+func TestFeatures_Table(t *testing.T) {
+	client := &fakeClient{features: []firewalla.Feature{
+		{Key: "adblock", Name: "Ad Block", Enabled: false},
+		{Key: "vpn", Name: "VPN Server", Enabled: true},
+	}}
+	out, _, err := exec(t, client, "features")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Ad Block")
+	assert.Contains(t, out, "off")
+	assert.Contains(t, out, "VPN Server")
+	assert.Contains(t, out, "on")
 }
 
 func TestData_JSON(t *testing.T) {
