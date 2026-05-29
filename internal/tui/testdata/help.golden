@@ -1,0 +1,21 @@
+╭───────────────────────────────────────────────────────────────╮
+│ Keyboard Shortcuts                                            │
+│                                                               │
+│   ↑/k, ↓/j        Move selection                              │
+│   g / G           Jump to top / bottom                        │
+│   enter           Device detail (traffic)                     │
+│   /               Search devices (name, IP, MAC)              │
+│   b               Block selected device                       │
+│   u               Unblock selected device                     │
+│   R               Rules view (e/d/x to enable/disable/delete) │
+│   A               Alarms view (a/x to archive/delete)         │
+│   N               Networks view                               │
+│   W               WAN/uplinks view                            │
+│   D               Data-usage view                             │
+│   1–6             Jump to a view (devices…data)               │
+│   r               Reload list                                 │
+│   ?               Toggle this help                            │
+│   q / ctrl+c      Quit                                        │
+│                                                               │
+│ ? or esc to close                                             │
+╰───────────────────────────────────────────────────────────────╯

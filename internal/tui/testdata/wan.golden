@@ -1,0 +1,6 @@
+🔥 fire  wan (2)
+ devices │ rules │ alarms │ networks │ wan │ data 
+
+❯ ● ISP-A            eth0     primary   healthy         
+    ISP-B            eth3     standby   down            
+↑↓ nav • r reload • esc devices • q quit

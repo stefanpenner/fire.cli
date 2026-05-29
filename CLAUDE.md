@@ -51,5 +51,7 @@ pasting raw `devices` / `dns` output anywhere it will be committed or shared.
 ## Commands
 
 - `go test ./...` — run everything.
-- `go test ./internal/render -update` — regenerate golden files.
+- `go test ./internal/render -update` — regenerate render golden files.
+- `go test ./internal/tui -update` — regenerate TUI view snapshots (rendered
+  with plain styles, ANSI stripped, so they're deterministic).
 - `make build` / `make test` / `make lint`.

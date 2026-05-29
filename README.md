@@ -112,7 +112,8 @@ cmd (cobra)  ──►  internal/firewalla (typed Client + pure parsers)  ──
 
 ```sh
 go test ./...                          # all tests
-go test ./internal/render -update      # regenerate golden files
+go test ./internal/render -update      # regenerate render golden files
+go test ./internal/tui -update         # regenerate TUI view snapshots
 make build | test | lint | fmt
 ```
 
