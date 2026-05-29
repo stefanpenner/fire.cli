@@ -20,6 +20,7 @@ type fakeDS struct {
 	alarms      []firewalla.Alarm
 	networks    []firewalla.Network
 	wans        []firewalla.WAN
+	data        firewalla.DataUsageReport
 	listErr     error
 	trafficErr  error
 	createErr   error
@@ -28,6 +29,7 @@ type fakeDS struct {
 	alarmsErr   error
 	networksErr error
 	wansErr     error
+	dataErr     error
 	gotSpec     firewalla.RuleSpec
 	gotMAC      string
 	gotRuleID   string
@@ -76,6 +78,9 @@ func (f *fakeDS) ListNetworks(context.Context) ([]firewalla.Network, error) {
 }
 func (f *fakeDS) ListWANs(context.Context) ([]firewalla.WAN, error) {
 	return f.wans, f.wansErr
+}
+func (f *fakeDS) DataUsage(context.Context) (firewalla.DataUsageReport, error) {
+	return f.data, f.dataErr
 }
 func (f *fakeDS) CreateRule(_ context.Context, spec firewalla.RuleSpec) (string, error) {
 	f.gotSpec, f.createCnt = spec, f.createCnt+1
@@ -623,6 +628,47 @@ func TestWANView_EscReturnsToDevices(t *testing.T) {
 	nm, _ := m.Update(runeKey("W"))
 	m = nm.(Model)
 	nm, _ = m.Update(wansMsg{wans: ds.wans})
+	m = nm.(Model)
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = nm.(Model)
+	assert.Equal(t, deviceView, m.view)
+}
+
+func TestDataView_ShowsPlanAndPerWAN(t *testing.T) {
+	ds := &fakeDS{
+		devices:  sampleDevices(),
+		networks: []firewalla.Network{{UUID: "u-1", Name: "ISP-A", Type: "wan"}},
+		data: firewalla.DataUsageReport{
+			PlanTotal: 1000000000000, // 1 TB
+			ResetDay:  1,
+			WANs:      []firewalla.WANUsage{{UUID: "u-1", Upload: 1024, Download: 1048576}},
+		},
+	}
+	m := loaded(ds)
+
+	nm, cmd := m.Update(runeKey("D"))
+	m = nm.(Model)
+	assert.Equal(t, dataView, m.view)
+	require.NotNil(t, cmd)
+	dm, ok := cmd().(dataMsg)
+	require.True(t, ok)
+
+	nm, _ = m.Update(dm)
+	m = nm.(Model)
+	v := m.View()
+	assert.Contains(t, v, "data usage")
+	assert.Contains(t, v, "plan")   // summary line
+	assert.Contains(t, v, "ISP-A")  // uuid resolved to name
+	assert.Contains(t, v, "1.0 MB") // download
+	assert.Contains(t, v, "resets day 1")
+}
+
+func TestDataView_EscReturnsToDevices(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices()}
+	m := loaded(ds)
+	nm, _ := m.Update(runeKey("D"))
+	m = nm.(Model)
+	nm, _ = m.Update(dataMsg{})
 	m = nm.(Model)
 	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = nm.(Model)

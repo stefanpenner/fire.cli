@@ -29,6 +29,9 @@ func (m Model) View() string {
 	if m.view == wanView {
 		return m.wansView()
 	}
+	if m.view == dataView {
+		return m.dataUsageView()
+	}
 
 	var b strings.Builder
 	b.WriteString(m.headerView())
@@ -52,6 +55,7 @@ func (m Model) tabBar() string {
 		{alarmView, "alarms"},
 		{networkView, "networks"},
 		{wanView, "wan"},
+		{dataView, "data"},
 	}
 	parts := make([]string, len(tabs))
 	for i, t := range tabs {
@@ -482,6 +486,50 @@ func (m Model) wanHealth(w firewalla.WAN) (string, lipgloss.Style) {
 	default:
 		return "no connectivity", m.styles.Offline
 	}
+}
+
+// dataUsageView renders the data-plan summary and per-WAN usage (read-only).
+func (m Model) dataUsageView() string {
+	var b strings.Builder
+	b.WriteString(m.viewHeader("  data usage"))
+	b.WriteString("\n\n")
+
+	switch {
+	case m.dataLoading && len(m.data.WANs) == 0 && m.data.PlanTotal == 0:
+		b.WriteString(m.styles.Subtle.Render("  loading…"))
+	case m.err != nil:
+		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
+	default:
+		total := m.data.Total()
+		if m.data.PlanTotal > 0 {
+			pct := float64(total) / float64(m.data.PlanTotal) * 100
+			fmt.Fprintf(&b, "  %s of %s plan  %s, resets day %d\n",
+				m.styles.Header.Render(humanizeBytes(total)),
+				humanizeBytes(m.data.PlanTotal),
+				m.styles.Status.Render(fmt.Sprintf("(%.1f%%)", pct)),
+				m.data.ResetDay)
+		} else {
+			fmt.Fprintf(&b, "  %s used\n", m.styles.Header.Render(humanizeBytes(total)))
+		}
+		b.WriteString("\n")
+		if len(m.data.WANs) == 0 {
+			b.WriteString(m.styles.Subtle.Render("  no per-WAN usage"))
+		} else {
+			for _, w := range m.data.WANs {
+				name := m.dataNames[w.UUID]
+				if name == "" {
+					name = w.UUID
+				}
+				fmt.Fprintf(&b, "  %-16s  ↑%s ↓%s  (%s)\n",
+					truncate(name, 16), humanizeBytes(w.Upload), humanizeBytes(w.Download),
+					humanizeBytes(w.Bytes()))
+			}
+		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.styles.Footer.Render(m.keys.DataHelp()))
+	return b.String()
 }
 
 func (m Model) helpView() string {

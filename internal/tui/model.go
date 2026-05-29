@@ -33,6 +33,7 @@ type DataSource interface {
 	DeleteAlarm(ctx context.Context, id string) error
 	ListNetworks(ctx context.Context) ([]firewalla.Network, error)
 	ListWANs(ctx context.Context) ([]firewalla.WAN, error)
+	DataUsage(ctx context.Context) (firewalla.DataUsageReport, error)
 }
 
 // alarmViewLimit caps how many alarms the alarms view loads.
@@ -47,6 +48,7 @@ const (
 	alarmView
 	networkView
 	wanView
+	dataView
 )
 
 // devicesMsg carries the result of a device (re)load.
@@ -77,6 +79,14 @@ type networksMsg struct {
 type wansMsg struct {
 	wans []firewalla.WAN
 	err  error
+}
+
+// dataMsg carries the result of a data-usage (re)load, with WAN uuid→name
+// resolved from the network list.
+type dataMsg struct {
+	report firewalla.DataUsageReport
+	names  map[string]string
+	err    error
 }
 
 // actionMsg carries the result of a confirmed mutation.
@@ -125,6 +135,10 @@ type Model struct {
 	wans        []firewalla.WAN
 	wanCursor   int
 	wansLoading bool
+
+	data        firewalla.DataUsageReport
+	dataNames   map[string]string
+	dataLoading bool
 
 	search    textinput.Model
 	searching bool
@@ -238,6 +252,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case dataMsg:
+		m.dataLoading = false
+		m.err = msg.err
+		if msg.err == nil {
+			m.data, m.dataNames = msg.report, msg.names
+		}
+		return m, nil
+
 	case actionMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -344,6 +366,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleNetworkKey(msg)
 	case wanView:
 		return m.handleWanKey(msg)
+	case dataView:
+		return m.handleDataKey(msg)
 	}
 
 	switch {
@@ -371,6 +395,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view = wanView
 		m.wansLoading, m.status, m.err = true, "", nil
 		return m, m.loadWansCmd()
+	case key.Matches(msg, m.keys.Data):
+		m.view = dataView
+		m.dataLoading, m.status, m.err = true, "", nil
+		return m, m.loadDataCmd()
 	case key.Matches(msg, m.keys.Search):
 		m.searching = true
 		m.status = ""
@@ -705,6 +733,41 @@ func (m Model) loadWansCmd() tea.Cmd {
 	return func() tea.Msg {
 		wans, err := ds.ListWANs(context.Background())
 		return wansMsg{wans: wans, err: err}
+	}
+}
+
+// ---- data-usage view (read-only summary) ----
+
+// handleDataKey handles keys while the data-usage summary is showing.
+func (m Model) handleDataKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Data):
+		m.view = deviceView
+	case key.Matches(msg, m.keys.Reload):
+		m.dataLoading, m.status, m.err = true, "", nil
+		return m, m.loadDataCmd()
+	}
+	return m, nil
+}
+
+// loadDataCmd fetches the data-usage report and resolves WAN uuid→name from the
+// network list (best effort), off the UI goroutine.
+func (m Model) loadDataCmd() tea.Cmd {
+	ds := m.ds
+	return func() tea.Msg {
+		report, err := ds.DataUsage(context.Background())
+		if err != nil {
+			return dataMsg{err: err}
+		}
+		names := map[string]string{}
+		if nets, nerr := ds.ListNetworks(context.Background()); nerr == nil {
+			for _, n := range nets {
+				if n.UUID != "" {
+					names[n.UUID] = n.Name
+				}
+			}
+		}
+		return dataMsg{report: report, names: names}
 	}
 }
 
