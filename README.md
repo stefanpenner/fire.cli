@@ -41,6 +41,7 @@ fire traffic phone laptop             # traffic between two devices
 fire traffic phone --with spotify.com # …filtered to a destination
 fire block "Kids iPad" --confirm      # block a device (--for 1h to auto-expire)
 fire unblock "Kids iPad" --confirm    # remove the block
+fire pause "Kids iPad" --for 1h --confirm  # pause internet (auto-resumes); resume to lift
 fire rules add block dns ads.example.com --confirm   # create a rule
 fire rules rm --confirm               # pick a rule to delete (also: enable/disable [id])
 fire features enable adblock --confirm # toggle a box feature (also: disable; by key or name)
@@ -51,8 +52,8 @@ fire redis keys 'policy:*'            # escape hatch: raw redis-cli on the box
 ### Interactive dashboard
 
 `fire tui` (or just `fire` in a terminal) opens a Bubble Tea dashboard with a
-tab bar across four views — **devices │ rules │ alarms │ networks** — switched
-with `R`/`A`/`N` (and `esc` back to devices). Navigate any list with ↑/↓ (or
+tab bar across five views — **devices │ rules │ alarms │ networks │ wan** —
+switched with `R`/`A`/`N`/`W` (and `esc` back to devices). Navigate any list with ↑/↓ (or
 `j`/`k`, `g`/`G`); `r` reloads, `?` shows help, `q` quits. Every mutation is
 confirmed with `y` (`n`/`esc` cancels), mirroring the CLI's `--confirm` gate.
 Piped or redirected, `fire` prints help instead.
@@ -62,6 +63,7 @@ Piped or redirected, `fire` prints help instead.
 - **rules** — `e`/`d`/`x` enable/disable/delete the selected rule.
 - **alarms** — `a` archives, `x` deletes the selected alarm.
 - **networks** — read-only list of networks/VLANs.
+- **wan** — read-only internet uplinks with live health (healthy/degraded/down).
 
 ### Pickers everywhere
 
