@@ -7,6 +7,7 @@ package picker
 import (
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // Match is one ranked item: its index in the original slice, its score, and
@@ -48,14 +49,16 @@ func Rank(items []string, query string) []Match {
 func scoreMatch(text, query string) (int, []int, bool) {
 	tr := []rune(text)
 	qr := []rune(strings.ToLower(query))
-	lower := []rune(strings.ToLower(text))
 
 	score := 0
 	positions := make([]int, 0, len(qr))
 	qi := 0
 	prevMatch := -2
+	// Fold case per rune so the lowercased slice stays 1:1 aligned with tr —
+	// strings.ToLower can change rune counts for some scripts, which would
+	// otherwise misalign positions (or index out of range).
 	for ti := 0; ti < len(tr) && qi < len(qr); ti++ {
-		if lower[ti] != qr[qi] {
+		if unicode.ToLower(tr[ti]) != qr[qi] {
 			continue
 		}
 		positions = append(positions, ti)
