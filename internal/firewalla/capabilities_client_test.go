@@ -76,6 +76,30 @@ func TestClient_ListAlarms(t *testing.T) {
 	assert.Equal(t, "Port Scan", alarms[0].Type)
 }
 
+func TestClient_CreateRule(t *testing.T) {
+	fake := transport.NewFake("pi@fire").
+		OnMatch("checkAndSaveAsync", transport.Result{Stdout: "LOGGER SET TO PRODUCTION\n{\"pid\":\"777\",\"exists\":\"no\"}\n"})
+	c := New(fake)
+
+	pid, err := c.CreateRule(context.Background(), RuleSpec{Action: "block", Type: "mac", Target: "AA:BB:CC:DD:EE:01"})
+	require.NoError(t, err)
+	assert.Equal(t, "777", pid)
+	// Drives PolicyManager2 via node in the app dir, passing the policy as JSON.
+	assert.Contains(t, fake.Commands[0], "PolicyManager2")
+	assert.Contains(t, fake.Commands[0], "FIRE_POLICY=")
+	assert.Contains(t, fake.Commands[0], "AA:BB:CC:DD:EE:01")
+}
+
+func TestClient_SetRuleDisabled(t *testing.T) {
+	fake := transport.NewFake("pi@fire").
+		OnMatch("disablePolicy", transport.Result{Stdout: "ok\n"})
+	c := New(fake)
+
+	require.NoError(t, c.SetRuleDisabled(context.Background(), "42", true))
+	assert.Contains(t, fake.Commands[0], "FIRE_PID='42'")
+	assert.Contains(t, fake.Commands[0], "FIRE_DISABLE='1'")
+}
+
 func TestClient_ListFeatures(t *testing.T) {
 	fake := transport.NewFake("pi@fire").
 		OnMatch("policy:system", transport.Result{Stdout: fixture(t, "features.txt")})

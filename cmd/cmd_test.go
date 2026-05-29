@@ -29,10 +29,14 @@ type fakeClient struct {
 	err       error
 
 	// recorded inputs
-	gotDomain  string
-	gotMAC     string
-	gotLimit   int
-	gotRawArgs string
+	gotDomain   string
+	gotMAC      string
+	gotLimit    int
+	gotRawArgs  string
+	gotRuleSpec firewalla.RuleSpec
+	gotRuleID   string
+	gotDisabled bool
+	createPID   string
 }
 
 func (f *fakeClient) Host() string { return "pi@test" }
@@ -69,6 +73,25 @@ func (f *fakeClient) ListAlarms(_ context.Context, limit int) ([]firewalla.Alarm
 }
 func (f *fakeClient) ListFeatures(context.Context) ([]firewalla.Feature, error) {
 	return f.features, f.err
+}
+func (f *fakeClient) CreateRule(_ context.Context, spec firewalla.RuleSpec) (string, error) {
+	f.gotRuleSpec = spec
+	if f.createPID == "" {
+		f.createPID = "999"
+	}
+	return f.createPID, f.err
+}
+func (f *fakeClient) DeleteMatching(_ context.Context, spec firewalla.RuleSpec) (int, error) {
+	f.gotRuleSpec = spec
+	return 1, f.err
+}
+func (f *fakeClient) DeleteRule(_ context.Context, id string) error {
+	f.gotRuleID = id
+	return f.err
+}
+func (f *fakeClient) SetRuleDisabled(_ context.Context, id string, disabled bool) error {
+	f.gotRuleID, f.gotDisabled = id, disabled
+	return f.err
 }
 func (f *fakeClient) Raw(_ context.Context, args string) (string, error) {
 	f.gotRawArgs = args

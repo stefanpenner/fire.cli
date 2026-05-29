@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
+	"github.com/stefanpenner/fire.cli/internal/firewalla"
 )
 
 func newRulesCmd(app *App) *cobra.Command {
@@ -40,5 +43,94 @@ func newRulesCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&includeDisabled, "all", false, "include disabled rules")
+	cmd.AddCommand(newRuleAddCmd(app), newRuleRmCmd(app), newRuleToggleCmd(app, true), newRuleToggleCmd(app, false))
+	return cmd
+}
+
+// newRuleAddCmd: fire rules add <block|allow> <type> <target>
+func newRuleAddCmd(app *App) *cobra.Command {
+	var (
+		confirm   bool
+		direction string
+		notes     string
+	)
+	cmd := &cobra.Command{
+		Use:   "add <block|allow> <type> <target>",
+		Short: "Create a rule (e.g. add block dns ads.example.com)",
+		Long: "Create and enforce a rule. <type> is one of dns, ip, net, mac,\n" +
+			"category, country, … and <target> is the value to match.",
+		Args: cobra.ExactArgs(3),
+		RunE: func(c *cobra.Command, args []string) error {
+			action, typ, target := args[0], args[1], args[2]
+			if action != "block" && action != "allow" {
+				return fmt.Errorf("action must be block or allow, got %q", action)
+			}
+			if !app.confirmed(confirm, fmt.Sprintf("%s %s %s", action, typ, target)) {
+				return nil
+			}
+			pid, err := app.Client.CreateRule(c.Context(), firewalla.RuleSpec{
+				Action: action, Type: typ, Target: target, Direction: direction, Notes: notes,
+			})
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(app.Out, "created rule %s\n", pid)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&confirm, "confirm", false, "apply the change")
+	cmd.Flags().StringVar(&direction, "direction", "bidirection", "bidirection | inbound | outbound")
+	cmd.Flags().StringVar(&notes, "notes", "via fire cli", "note stored on the rule")
+	return cmd
+}
+
+// newRuleRmCmd: fire rules rm <id>
+func newRuleRmCmd(app *App) *cobra.Command {
+	var confirm bool
+	cmd := &cobra.Command{
+		Use:     "rm <id>",
+		Aliases: []string{"delete", "del"},
+		Short:   "Delete a rule by id",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(c *cobra.Command, args []string) error {
+			id := args[0]
+			if !app.confirmed(confirm, fmt.Sprintf("delete rule %s", id)) {
+				return nil
+			}
+			if err := app.Client.DeleteRule(c.Context(), id); err != nil {
+				return err
+			}
+			fmt.Fprintf(app.Out, "deleted rule %s\n", id)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&confirm, "confirm", false, "apply the change")
+	return cmd
+}
+
+// newRuleToggleCmd builds the enable or disable subcommand.
+func newRuleToggleCmd(app *App, disable bool) *cobra.Command {
+	verb := "enable"
+	if disable {
+		verb = "disable"
+	}
+	var confirm bool
+	cmd := &cobra.Command{
+		Use:   verb + " <id>",
+		Short: verb + " a rule by id",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(c *cobra.Command, args []string) error {
+			id := args[0]
+			if !app.confirmed(confirm, fmt.Sprintf("%s rule %s", verb, id)) {
+				return nil
+			}
+			if err := app.Client.SetRuleDisabled(c.Context(), id, disable); err != nil {
+				return err
+			}
+			fmt.Fprintf(app.Out, "%sd rule %s\n", verb, id)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&confirm, "confirm", false, "apply the change")
 	return cmd
 }

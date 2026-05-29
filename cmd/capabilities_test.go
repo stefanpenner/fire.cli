@@ -130,6 +130,79 @@ func TestFeatures_Table(t *testing.T) {
 	assert.Contains(t, out, "on")
 }
 
+func TestBlock_RequiresConfirm(t *testing.T) {
+	client := &fakeClient{devices: []firewalla.Device{{MAC: "AA:BB:CC:DD:EE:01", Name: "Phone"}}}
+
+	// Without --confirm: nothing is applied.
+	_, errOut, err := exec(t, client, "block", "Phone")
+	require.NoError(t, err)
+	assert.Contains(t, errOut, "would block")
+	assert.Empty(t, client.gotRuleSpec.Target, "must not mutate without --confirm")
+
+	// With --confirm: a mac block rule is created.
+	client.createPID = "321"
+	out, _, err := exec(t, client, "block", "Phone", "--confirm")
+	require.NoError(t, err)
+	assert.Equal(t, "block", client.gotRuleSpec.Action)
+	assert.Equal(t, "mac", client.gotRuleSpec.Type)
+	assert.Equal(t, "AA:BB:CC:DD:EE:01", client.gotRuleSpec.Target)
+	assert.Contains(t, out, "rule 321")
+}
+
+func TestBlock_ForSetsExpire(t *testing.T) {
+	client := &fakeClient{devices: []firewalla.Device{{MAC: "AA:BB:CC:DD:EE:01", Name: "Phone"}}}
+	_, _, err := exec(t, client, "block", "Phone", "--for", "1h", "--confirm")
+	require.NoError(t, err)
+	assert.Equal(t, 3600, client.gotRuleSpec.ExpireSec)
+}
+
+func TestUnblock(t *testing.T) {
+	client := &fakeClient{devices: []firewalla.Device{{MAC: "AA:BB:CC:DD:EE:01", Name: "Phone"}}}
+	out, _, err := exec(t, client, "unblock", "Phone", "--confirm")
+	require.NoError(t, err)
+	assert.Equal(t, "AA:BB:CC:DD:EE:01", client.gotRuleSpec.Target)
+	assert.Contains(t, out, "unblocked")
+}
+
+func TestRulesAdd(t *testing.T) {
+	client := &fakeClient{createPID: "555"}
+	out, _, err := exec(t, client, "rules", "add", "block", "dns", "ads.example.com", "--confirm")
+	require.NoError(t, err)
+	assert.Equal(t, "block", client.gotRuleSpec.Action)
+	assert.Equal(t, "dns", client.gotRuleSpec.Type)
+	assert.Equal(t, "ads.example.com", client.gotRuleSpec.Target)
+	assert.Contains(t, out, "555")
+}
+
+func TestRulesAdd_RejectsBadAction(t *testing.T) {
+	_, _, err := exec(t, &fakeClient{}, "rules", "add", "nope", "dns", "x", "--confirm")
+	require.Error(t, err)
+}
+
+func TestRulesRm_And_Toggle(t *testing.T) {
+	client := &fakeClient{}
+	_, _, err := exec(t, client, "rules", "rm", "42", "--confirm")
+	require.NoError(t, err)
+	assert.Equal(t, "42", client.gotRuleID)
+
+	_, _, err = exec(t, client, "rules", "disable", "7", "--confirm")
+	require.NoError(t, err)
+	assert.Equal(t, "7", client.gotRuleID)
+	assert.True(t, client.gotDisabled)
+
+	_, _, err = exec(t, client, "rules", "enable", "7", "--confirm")
+	require.NoError(t, err)
+	assert.False(t, client.gotDisabled)
+}
+
+func TestRulesRm_RequiresConfirm(t *testing.T) {
+	client := &fakeClient{}
+	_, errOut, err := exec(t, client, "rules", "rm", "42")
+	require.NoError(t, err)
+	assert.Contains(t, errOut, "would delete")
+	assert.Empty(t, client.gotRuleID, "must not delete without --confirm")
+}
+
 func TestData_JSON(t *testing.T) {
 	client := &fakeClient{dataUsage: firewalla.DataUsageReport{
 		PlanTotal: 1000,

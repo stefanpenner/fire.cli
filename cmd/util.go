@@ -10,6 +10,18 @@ import (
 
 var macRE = regexp.MustCompile(`^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$`)
 
+// confirmed gates a mutating action. It always prints what will change; when
+// confirm is false it tells the user how to apply and returns false so the
+// caller can stop without performing the mutation.
+func (a *App) confirmed(confirm bool, action string) bool {
+	if confirm {
+		fmt.Fprintf(a.Err, "%s…\n", action)
+		return true
+	}
+	fmt.Fprintf(a.Err, "would %s\nre-run with --confirm to apply\n", action)
+	return false
+}
+
 // looksLikeMAC reports whether s is a colon-separated MAC address.
 func looksLikeMAC(s string) bool { return macRE.MatchString(s) }
 

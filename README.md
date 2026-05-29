@@ -38,8 +38,17 @@ fire features                         # which features are on (ad block, VPN, Do
 fire traffic "Living Room TV"         # who a device talks to (internet + LAN peers)
 fire traffic phone laptop             # traffic between two devices
 fire traffic phone --with spotify.com # …filtered to a destination
+fire block "Kids iPad" --confirm      # block a device (--for 1h to auto-expire)
+fire unblock "Kids iPad" --confirm    # remove the block
+fire rules add block dns ads.example.com --confirm   # create a rule
+fire rules rm 215 --confirm           # delete a rule (also: enable/disable <id>)
 fire redis keys 'policy:*'            # escape hatch: raw redis-cli on the box
 ```
+
+Mutating commands (`block`, `unblock`, `rules add|rm|enable|disable`) print what
+they will do and require `--confirm` to apply. They go through Firewalla's own
+PolicyManager so changes are enforced exactly like the app, not just written to
+redis.
 
 `traffic` accepts a MAC, IP, or device name for both the device and the peer.
 Internet peers show as domains/IPs (from Firewalla's `sumflow` rollups); LAN
