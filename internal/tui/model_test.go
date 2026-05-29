@@ -16,12 +16,17 @@ import (
 type fakeDS struct {
 	devices    []firewalla.Device
 	peers      []firewalla.Peer
+	rules      []firewalla.Rule
 	listErr    error
 	trafficErr error
 	createErr  error
 	deleteErr  error
+	rulesErr   error
 	gotSpec    firewalla.RuleSpec
 	gotMAC     string
+	gotRuleID  string
+	gotDisable bool
+	gotDelete  string
 	createCnt  int
 	deleteCnt  int
 }
@@ -33,6 +38,17 @@ func (f *fakeDS) ListDevices(context.Context) ([]firewalla.Device, error) {
 func (f *fakeDS) Traffic(_ context.Context, mac string) ([]firewalla.Peer, error) {
 	f.gotMAC = mac
 	return f.peers, f.trafficErr
+}
+func (f *fakeDS) ListRules(context.Context) ([]firewalla.Rule, error) {
+	return f.rules, f.rulesErr
+}
+func (f *fakeDS) SetRuleDisabled(_ context.Context, id string, disabled bool) error {
+	f.gotRuleID, f.gotDisable = id, disabled
+	return nil
+}
+func (f *fakeDS) DeleteRule(_ context.Context, id string) error {
+	f.gotDelete = id
+	return nil
 }
 func (f *fakeDS) CreateRule(_ context.Context, spec firewalla.RuleSpec) (string, error) {
 	f.gotSpec, f.createCnt = spec, f.createCnt+1
@@ -296,7 +312,112 @@ func TestDetail_BlockFromPaneStagesConfirm(t *testing.T) {
 	m = nm.(Model)
 	assert.Nil(t, cmd, "block from the detail pane still confirms first")
 	require.NotNil(t, m.pending)
-	assert.Equal(t, "AA:BB:CC:DD:EE:03", m.pending.mac)
+	assert.Equal(t, "Block Old Laptop?", m.pending.prompt)
+	assert.Contains(t, m.View(), "Block Old Laptop?", "confirm bar shows in the detail pane")
+}
+
+func sampleRules() []firewalla.Rule {
+	return []firewalla.Rule{
+		{ID: "10", Action: "block", Type: "dns", Target: "ads.example.net", Disabled: false},
+		{ID: "11", Action: "allow", Type: "mac", Target: "AA:BB:CC:DD:EE:01", Disabled: true},
+	}
+}
+
+// loadedRules opens the rules view with rules already delivered.
+func loadedRules(ds *fakeDS) Model {
+	m := loaded(ds)
+	nm, _ := m.Update(runeKey("R")) // enter rules view (kicks off a load)
+	m = nm.(Model)
+	nm, _ = m.Update(rulesMsg{rules: ds.rules})
+	return nm.(Model)
+}
+
+func TestRulesView_OpensAndLists(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices(), rules: sampleRules()}
+	m := loaded(ds)
+
+	nm, cmd := m.Update(runeKey("R"))
+	m = nm.(Model)
+	assert.Equal(t, ruleView, m.view)
+	require.NotNil(t, cmd) // load kicked off
+	rm, ok := cmd().(rulesMsg)
+	require.True(t, ok)
+
+	nm, _ = m.Update(rm)
+	m = nm.(Model)
+	v := m.View()
+	assert.Contains(t, v, "rules (2)")
+	assert.Contains(t, v, "ads.example.net")
+	assert.Contains(t, v, "on")  // rule 10 enabled
+	assert.Contains(t, v, "off") // rule 11 disabled
+}
+
+func TestRulesView_EscReturnsToDevices(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices(), rules: sampleRules()}
+	m := loadedRules(ds)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = nm.(Model)
+	assert.Equal(t, deviceView, m.view)
+	assert.Contains(t, m.View(), "Example Phone") // back to devices
+}
+
+func TestRulesView_DisableConfirms(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices(), rules: sampleRules()}
+	m := loadedRules(ds) // cursor on rule 10
+
+	nm, cmd := m.Update(runeKey("d"))
+	m = nm.(Model)
+	assert.Nil(t, cmd, "must confirm before mutating")
+	require.NotNil(t, m.pending)
+	assert.Equal(t, "Disable rule 10?", m.pending.prompt)
+
+	nm, cmd = m.Update(runeKey("y"))
+	m = nm.(Model)
+	require.NotNil(t, cmd)
+	am, ok := cmd().(actionMsg)
+	require.True(t, ok)
+	require.NoError(t, am.err)
+	assert.Equal(t, "10", ds.gotRuleID)
+	assert.True(t, ds.gotDisable)
+	assert.Contains(t, am.text, "disabled rule 10")
+}
+
+func TestRulesView_EnableAndDelete(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices(), rules: sampleRules()}
+	m := loadedRules(ds)
+
+	// enable rule 10
+	nm, _ := m.Update(runeKey("e"))
+	m = nm.(Model)
+	require.NotNil(t, m.pending)
+	assert.Equal(t, "Enable rule 10?", m.pending.prompt)
+	nm, cmd := m.Update(runeKey("y"))
+	m = nm.(Model)
+	cmd()
+	assert.Equal(t, "10", ds.gotRuleID)
+	assert.False(t, ds.gotDisable)
+
+	// move to rule 11, delete it
+	nm, _ = m.Update(runeKey("j"))
+	m = nm.(Model)
+	nm, _ = m.Update(runeKey("x"))
+	m = nm.(Model)
+	require.NotNil(t, m.pending)
+	assert.Equal(t, "Delete rule 11?", m.pending.prompt)
+	nm, cmd = m.Update(runeKey("y"))
+	m = nm.(Model)
+	cmd()
+	assert.Equal(t, "11", ds.gotDelete)
+}
+
+func TestRulesView_ActionReloadsRules(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices(), rules: sampleRules()}
+	m := loadedRules(ds)
+	nm, cmd := m.Update(actionMsg{text: "disabled rule 10"})
+	m = nm.(Model)
+	require.NotNil(t, cmd)
+	_, ok := cmd().(rulesMsg)
+	assert.True(t, ok, "an action in the rules view reloads rules, not devices")
 }
 
 func TestBlock_EmptyListNoCrash(t *testing.T) {

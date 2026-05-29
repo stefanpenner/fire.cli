@@ -16,6 +16,12 @@ type KeyMap struct {
 	Quit    key.Binding
 	Enter   key.Binding
 	Cancel  key.Binding
+
+	// rules view
+	Rules       key.Binding
+	RuleEnable  key.Binding
+	RuleDisable key.Binding
+	RuleDelete  key.Binding
 }
 
 // DefaultKeyMap returns the default key bindings.
@@ -33,12 +39,22 @@ func DefaultKeyMap() KeyMap {
 		Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 		Enter:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
 		Cancel:  key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
+
+		Rules:       key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "rules")),
+		RuleEnable:  key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "enable")),
+		RuleDisable: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "disable")),
+		RuleDelete:  key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "delete")),
 	}
+}
+
+// RulesHelp is the one-line footer help shown in the rules view.
+func (k KeyMap) RulesHelp() string {
+	return "↑↓ nav • e enable • d disable • x delete • r reload • esc devices • q quit"
 }
 
 // ShortHelp is the one-line footer help for normal mode.
 func (k KeyMap) ShortHelp() string {
-	return "↑↓ nav • enter detail • / search • b block • u unblock • r reload • ? help • q quit"
+	return "↑↓ nav • enter detail • / search • b block • u unblock • R rules • r reload • ? help • q quit"
 }
 
 // SearchHelp is the footer help shown while typing a search.
@@ -55,7 +71,8 @@ func (k KeyMap) FullHelp() [][2]string {
 		{"/", "Search devices (name, IP, MAC)"},
 		{"b", "Block selected device"},
 		{"u", "Unblock selected device"},
-		{"r", "Reload device list"},
+		{"R", "Rules view (e/d/x to enable/disable/delete)"},
+		{"r", "Reload list"},
 		{"?", "Toggle this help"},
 		{"q / ctrl+c", "Quit"},
 	}

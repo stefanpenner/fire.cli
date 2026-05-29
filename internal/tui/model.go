@@ -25,15 +25,32 @@ type DataSource interface {
 	Traffic(ctx context.Context, mac string) ([]firewalla.Peer, error)
 	CreateRule(ctx context.Context, spec firewalla.RuleSpec) (string, error)
 	DeleteMatching(ctx context.Context, spec firewalla.RuleSpec) (int, error)
+	ListRules(ctx context.Context) ([]firewalla.Rule, error)
+	SetRuleDisabled(ctx context.Context, id string, disabled bool) error
+	DeleteRule(ctx context.Context, id string) error
 }
 
-// devicesMsg carries the result of a (re)load.
+// viewMode selects which list the dashboard shows.
+type viewMode int
+
+const (
+	deviceView viewMode = iota
+	ruleView
+)
+
+// devicesMsg carries the result of a device (re)load.
 type devicesMsg struct {
 	devices []firewalla.Device
 	err     error
 }
 
-// actionMsg carries the result of a block/unblock.
+// rulesMsg carries the result of a rules (re)load.
+type rulesMsg struct {
+	rules []firewalla.Rule
+	err   error
+}
+
+// actionMsg carries the result of a confirmed mutation.
 type actionMsg struct {
 	text string
 	err  error
@@ -57,9 +74,15 @@ type Model struct {
 
 	width, height int
 
+	view viewMode // which list is showing
+
 	devices []firewalla.Device // sorted: online first, then most-recent
 	visible []int              // indices into devices after the active filter
 	cursor  int                // index into visible
+
+	rules        []firewalla.Rule
+	ruleCursor   int
+	rulesLoading bool
 
 	search    textinput.Model
 	searching bool
@@ -67,7 +90,7 @@ type Model struct {
 	showHelp bool
 	loading  bool
 	status   string         // transient feedback (e.g. "blocked Phone")
-	pending  *pendingAction // a block/unblock awaiting y/n confirmation
+	pending  *pendingAction // a mutation awaiting y/n confirmation
 	detail   *detailState   // open device detail pane, or nil
 	err      error
 }
@@ -81,11 +104,11 @@ type detailState struct {
 }
 
 // pendingAction is a destructive action staged for confirmation, mirroring the
-// CLI's --confirm gate so the dashboard never mutates on a single keypress.
+// CLI's --confirm gate so the dashboard never mutates on a single keypress. The
+// prompt is shown in the footer; cmd fires on y/enter.
 type pendingAction struct {
-	block bool
-	label string
-	mac   string
+	prompt string
+	cmd    tea.Cmd
 }
 
 // NewModel builds a dashboard over ds. now defaults to time.Now when nil.
@@ -135,14 +158,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case rulesMsg:
+		m.rulesLoading = false
+		m.err = msg.err
+		if msg.err == nil {
+			m.rules = msg.rules
+			m.ruleCursor = clampIndex(m.ruleCursor, len(m.rules))
+		}
+		return m, nil
+
 	case actionMsg:
 		if msg.err != nil {
 			m.err = msg.err
 		} else {
 			m.status = msg.text
 		}
+		// Refresh whichever list is showing so it reflects the change.
+		if m.view == ruleView {
+			m.rulesLoading = true
+			return m, m.loadRulesCmd()
+		}
 		m.loading = true
-		return m, m.loadCmd() // refresh to reflect the change
+		return m, m.loadCmd()
 
 	case detailMsg:
 		if m.detail != nil && m.detail.device.MAC == msg.mac {
@@ -213,9 +250,20 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Keys common to every list view.
 	switch {
 	case key.Matches(msg, m.keys.Quit):
 		return m, tea.Quit
+	case key.Matches(msg, m.keys.Help):
+		m.showHelp = true
+		return m, nil
+	}
+
+	if m.view == ruleView {
+		return m.handleRuleKey(msg)
+	}
+
+	switch {
 	case key.Matches(msg, m.keys.Up):
 		m.moveCursor(-1)
 	case key.Matches(msg, m.keys.Down):
@@ -224,8 +272,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 	case key.Matches(msg, m.keys.GoBot):
 		m.cursor = max(len(m.visible)-1, 0)
-	case key.Matches(msg, m.keys.Help):
-		m.showHelp = true
+	case key.Matches(msg, m.keys.Rules):
+		m.view = ruleView
+		m.rulesLoading, m.status, m.err = true, "", nil
+		return m, m.loadRulesCmd()
 	case key.Matches(msg, m.keys.Search):
 		m.searching = true
 		m.status = ""
@@ -264,43 +314,142 @@ func (m *Model) stageAction(block bool) {
 	if !ok {
 		return
 	}
+	verb := "Block"
+	if !block {
+		verb = "Unblock"
+	}
 	m.status = ""
-	m.pending = &pendingAction{block: block, label: deviceLabel(d), mac: d.MAC}
+	m.pending = &pendingAction{
+		prompt: fmt.Sprintf("%s %s?", verb, deviceLabel(d)),
+		cmd:    m.blockCmd(block, deviceLabel(d), d.MAC),
+	}
+}
+
+// blockCmd builds the command that blocks/unblocks a device by MAC.
+func (m Model) blockCmd(block bool, label, mac string) tea.Cmd {
+	ds := m.ds
+	spec := firewalla.RuleSpec{Action: "block", Type: "mac", Target: mac, Notes: "via fire tui"}
+	return func() tea.Msg {
+		if block {
+			if _, err := ds.CreateRule(context.Background(), spec); err != nil {
+				return actionMsg{err: err}
+			}
+			return actionMsg{text: "blocked " + label}
+		}
+		n, err := ds.DeleteMatching(context.Background(), spec)
+		if err != nil {
+			return actionMsg{err: err}
+		}
+		return actionMsg{text: fmt.Sprintf("unblocked %s (%d rule(s))", label, n)}
+	}
 }
 
 // confirmKey handles y/n (and esc) while an action is staged.
 func (m Model) confirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y", "enter":
-		p := m.pending
+		cmd := m.pending.cmd
 		m.pending = nil
-		return m, m.runAction(p)
+		return m, cmd
 	case "n", "N", "esc", "q", "ctrl+c":
 		m.pending = nil
 	}
 	return m, nil
 }
 
-// runAction performs a confirmed block/unblock and surfaces the outcome as an
-// actionMsg. Returns nil for a nil action (nothing staged).
-func (m Model) runAction(p *pendingAction) tea.Cmd {
-	if p == nil {
-		return nil
+// ---- rules view ----
+
+// handleRuleKey handles keys while the rules list is showing.
+func (m Model) handleRuleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Rules):
+		m.view = deviceView
+	case key.Matches(msg, m.keys.Up):
+		m.ruleCursor = clampIndex(m.ruleCursor-1, len(m.rules))
+	case key.Matches(msg, m.keys.Down):
+		m.ruleCursor = clampIndex(m.ruleCursor+1, len(m.rules))
+	case key.Matches(msg, m.keys.GoTop):
+		m.ruleCursor = 0
+	case key.Matches(msg, m.keys.GoBot):
+		m.ruleCursor = max(len(m.rules)-1, 0)
+	case key.Matches(msg, m.keys.Reload):
+		m.rulesLoading, m.status, m.err = true, "", nil
+		return m, m.loadRulesCmd()
+	case key.Matches(msg, m.keys.RuleEnable):
+		m.stageRule("enable")
+	case key.Matches(msg, m.keys.RuleDisable):
+		m.stageRule("disable")
+	case key.Matches(msg, m.keys.RuleDelete):
+		m.stageRule("delete")
 	}
+	return m, nil
+}
+
+// clampIndex keeps i within [0, n) (returning 0 when n == 0).
+func clampIndex(i, n int) int {
+	if i >= n {
+		i = n - 1
+	}
+	if i < 0 {
+		i = 0
+	}
+	return i
+}
+
+// loadRulesCmd fetches rules off the UI goroutine.
+func (m Model) loadRulesCmd() tea.Cmd {
 	ds := m.ds
-	spec := firewalla.RuleSpec{Action: "block", Type: "mac", Target: p.mac, Notes: "via fire tui"}
 	return func() tea.Msg {
-		if p.block {
-			if _, err := ds.CreateRule(context.Background(), spec); err != nil {
-				return actionMsg{err: err}
-			}
-			return actionMsg{text: "blocked " + p.label}
+		rules, err := ds.ListRules(context.Background())
+		return rulesMsg{rules: rules, err: err}
+	}
+}
+
+// selectedRule returns the rule under the rules cursor.
+func (m Model) selectedRule() (firewalla.Rule, bool) {
+	if m.ruleCursor < 0 || m.ruleCursor >= len(m.rules) {
+		return firewalla.Rule{}, false
+	}
+	return m.rules[m.ruleCursor], true
+}
+
+// ruleVerbs maps an action kind to its display verb and result participle.
+var ruleVerbs = map[string][2]string{
+	"enable":  {"Enable", "enabled"},
+	"disable": {"Disable", "disabled"},
+	"delete":  {"Delete", "deleted"},
+}
+
+// stageRule stages an enable/disable/delete for the selected rule.
+func (m *Model) stageRule(kind string) {
+	r, ok := m.selectedRule()
+	if !ok {
+		return
+	}
+	m.status = ""
+	m.pending = &pendingAction{
+		prompt: fmt.Sprintf("%s rule %s?", ruleVerbs[kind][0], r.ID),
+		cmd:    m.ruleCmd(kind, r.ID),
+	}
+}
+
+// ruleCmd builds the command for a rule mutation.
+func (m Model) ruleCmd(kind, id string) tea.Cmd {
+	ds := m.ds
+	return func() tea.Msg {
+		var err error
+		switch kind {
+		case "enable":
+			err = ds.SetRuleDisabled(context.Background(), id, false)
+		case "disable":
+			err = ds.SetRuleDisabled(context.Background(), id, true)
+		case "delete":
+			err = ds.DeleteRule(context.Background(), id)
 		}
-		n, err := ds.DeleteMatching(context.Background(), spec)
 		if err != nil {
 			return actionMsg{err: err}
 		}
-		return actionMsg{text: fmt.Sprintf("unblocked %s (%d rule(s))", p.label, n)}
+		return actionMsg{text: ruleVerbs[kind][1] + " rule " + id}
 	}
 }
 

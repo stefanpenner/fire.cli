@@ -15,6 +15,9 @@ func (m Model) View() string {
 	if m.detail != nil {
 		return m.detailView()
 	}
+	if m.view == ruleView {
+		return m.rulesView()
+	}
 
 	var b strings.Builder
 	b.WriteString(m.headerView())
@@ -103,14 +106,15 @@ func (m Model) deviceRow(d firewalla.Device, selected bool) string {
 	return cursor + statusStyle.Render(dot) + " " + line
 }
 
+// confirmBar renders the staged-action confirmation line shown in any view.
+func (m Model) confirmBar() string {
+	return m.styles.Status.Render(m.pending.prompt) +
+		m.styles.Footer.Render("   y confirm • n cancel")
+}
+
 func (m Model) footerView() string {
 	if m.pending != nil {
-		verb := "Block"
-		if !m.pending.block {
-			verb = "Unblock"
-		}
-		return m.styles.Status.Render(fmt.Sprintf("%s %s?", verb, m.pending.label)) +
-			m.styles.Footer.Render("   y confirm • n cancel")
+		return m.confirmBar()
 	}
 	if m.err != nil {
 		return m.styles.ErrText.Render(m.err.Error())
@@ -177,8 +181,71 @@ func (m Model) detailView() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(m.styles.Footer.Render("b block • u unblock • esc back • q close"))
+	if m.pending != nil {
+		b.WriteString(m.confirmBar())
+	} else {
+		b.WriteString(m.styles.Footer.Render("b block • u unblock • esc back • q close"))
+	}
 	return b.String()
+}
+
+// rulesView renders the firewall-rules list.
+func (m Model) rulesView() string {
+	var b strings.Builder
+	b.WriteString(m.styles.Title.Render("🔥 fire") +
+		m.styles.Subtle.Render(fmt.Sprintf("  rules (%d)", len(m.rules))))
+	b.WriteString("\n\n")
+
+	switch {
+	case m.rulesLoading && len(m.rules) == 0:
+		b.WriteString(m.styles.Subtle.Render("  loading…"))
+	case m.err != nil:
+		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
+	case len(m.rules) == 0:
+		b.WriteString(m.styles.Subtle.Render("  no rules"))
+	default:
+		maxRows := m.height - 4
+		if maxRows < 1 {
+			maxRows = 1
+		}
+		start := 0
+		if m.ruleCursor >= maxRows {
+			start = m.ruleCursor - maxRows + 1
+		}
+		end := min(start+maxRows, len(m.rules))
+		rows := make([]string, 0, end-start)
+		for i := start; i < end; i++ {
+			rows = append(rows, m.ruleRow(m.rules[i], i == m.ruleCursor))
+		}
+		b.WriteString(strings.Join(rows, "\n"))
+	}
+
+	b.WriteString("\n")
+	switch {
+	case m.pending != nil:
+		b.WriteString(m.confirmBar())
+	case m.status != "":
+		b.WriteString(m.styles.Status.Render(m.status) + m.styles.Footer.Render("   "+m.keys.RulesHelp()))
+	default:
+		b.WriteString(m.styles.Footer.Render(m.keys.RulesHelp()))
+	}
+	return b.String()
+}
+
+func (m Model) ruleRow(r firewalla.Rule, selected bool) string {
+	state, stStyle := "on ", m.styles.Online
+	if r.Disabled {
+		state, stStyle = "off", m.styles.Offline
+	}
+	target := r.Target
+	if len(target) > 30 {
+		target = target[:29] + "…"
+	}
+	line := fmt.Sprintf("%-6s %-6s %-9s %-30s", r.ID, r.Action, r.Type, target)
+	if selected {
+		return m.styles.Title.Render("❯ ") + stStyle.Render(state) + " " + m.styles.Selected.Render(line)
+	}
+	return "  " + stStyle.Render(state) + " " + line
 }
 
 func (m Model) helpView() string {
