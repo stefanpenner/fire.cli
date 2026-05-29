@@ -88,12 +88,19 @@ func newRuleAddCmd(app *App) *cobra.Command {
 func newRuleRmCmd(app *App) *cobra.Command {
 	var confirm bool
 	cmd := &cobra.Command{
-		Use:     "rm <id>",
-		Aliases: []string{"delete", "del"},
-		Short:   "Delete a rule by id",
-		Args:    cobra.ExactArgs(1),
+		Use:               "rm [id]",
+		Aliases:           []string{"delete", "del"},
+		Short:             "Delete a rule by id (omit to pick interactively)",
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: app.completeRule,
 		RunE: func(c *cobra.Command, args []string) error {
-			id := args[0]
+			id, err := app.resolveOrPickRule(c.Context(), args, "Delete which rule?")
+			if err != nil {
+				return err
+			}
+			if id == "" {
+				return nil // cancelled
+			}
 			if !app.confirmed(confirm, fmt.Sprintf("delete rule %s", id)) {
 				return nil
 			}
@@ -116,11 +123,18 @@ func newRuleToggleCmd(app *App, disable bool) *cobra.Command {
 	}
 	var confirm bool
 	cmd := &cobra.Command{
-		Use:   verb + " <id>",
-		Short: verb + " a rule by id",
-		Args:  cobra.ExactArgs(1),
+		Use:               verb + " [id]",
+		Short:             verb + " a rule by id (omit to pick interactively)",
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: app.completeRule,
 		RunE: func(c *cobra.Command, args []string) error {
-			id := args[0]
+			id, err := app.resolveOrPickRule(c.Context(), args, "Which rule to "+verb+"?")
+			if err != nil {
+				return err
+			}
+			if id == "" {
+				return nil // cancelled
+			}
 			if !app.confirmed(confirm, fmt.Sprintf("%s rule %s", verb, id)) {
 				return nil
 			}
