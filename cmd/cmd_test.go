@@ -39,6 +39,8 @@ type fakeClient struct {
 	gotFeatKey  string
 	gotFeatOn   bool
 	gotFeatSet  bool
+	gotAlarmID  string
+	gotAlarmOp  string
 	createPID   string
 }
 
@@ -98,6 +100,14 @@ func (f *fakeClient) SetRuleDisabled(_ context.Context, id string, disabled bool
 }
 func (f *fakeClient) SetFeature(_ context.Context, key string, enabled bool) error {
 	f.gotFeatKey, f.gotFeatOn, f.gotFeatSet = key, enabled, true
+	return f.err
+}
+func (f *fakeClient) ArchiveAlarm(_ context.Context, id string) error {
+	f.gotAlarmID, f.gotAlarmOp = id, "archive"
+	return f.err
+}
+func (f *fakeClient) DeleteAlarm(_ context.Context, id string) error {
+	f.gotAlarmID, f.gotAlarmOp = id, "delete"
 	return f.err
 }
 func (f *fakeClient) Raw(_ context.Context, args string) (string, error) {

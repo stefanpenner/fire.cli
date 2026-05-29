@@ -141,6 +141,28 @@ func (c *Client) SetFeature(ctx context.Context, key string, enabled bool) error
 	return err
 }
 
+// ArchiveAlarm acknowledges an alarm by moving it from the active queue to the
+// archive (the app's "ignore"/dismiss), via AlarmManager2 so the running
+// process stays consistent.
+func (c *Client) ArchiveAlarm(ctx context.Context, id string) error {
+	return c.alarmOp(ctx, id, "archive")
+}
+
+// DeleteAlarm removes an alarm entirely.
+func (c *Client) DeleteAlarm(ctx context.Context, id string) error {
+	return c.alarmOp(ctx, id, "delete")
+}
+
+func (c *Client) alarmOp(ctx context.Context, id, op string) error {
+	body := `const AM2=require("./alarm/AlarmManager2.js");const am2=new AM2();` +
+		`const id=process.env.FIRE_AID;` +
+		`if(process.env.FIRE_OP==="delete"){await am2.removeAlarmAsync(id);}` +
+		`else{await am2.archiveAlarm(id);}` +
+		`console.log("ok");process.exit(0);`
+	_, err := c.runNode(ctx, wrapAsync(body), map[string]string{"FIRE_AID": id, "FIRE_OP": op})
+	return err
+}
+
 // wrapAsync wraps a body as an immediately-invoked async function with a
 // uniform error handler. The body must console.log its result and process.exit.
 func wrapAsync(body string) string {

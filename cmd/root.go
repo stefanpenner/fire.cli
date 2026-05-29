@@ -34,6 +34,8 @@ type Client interface {
 	DeleteRule(ctx context.Context, id string) error
 	SetRuleDisabled(ctx context.Context, id string, disabled bool) error
 	SetFeature(ctx context.Context, key string, enabled bool) error
+	ArchiveAlarm(ctx context.Context, id string) error
+	DeleteAlarm(ctx context.Context, id string) error
 	Raw(ctx context.Context, args string) (string, error)
 }
 
