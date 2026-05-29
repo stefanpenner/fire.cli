@@ -36,6 +36,9 @@ type fakeClient struct {
 	gotRuleSpec firewalla.RuleSpec
 	gotRuleID   string
 	gotDisabled bool
+	gotFeatKey  string
+	gotFeatOn   bool
+	gotFeatSet  bool
 	createPID   string
 }
 
@@ -91,6 +94,10 @@ func (f *fakeClient) DeleteRule(_ context.Context, id string) error {
 }
 func (f *fakeClient) SetRuleDisabled(_ context.Context, id string, disabled bool) error {
 	f.gotRuleID, f.gotDisabled = id, disabled
+	return f.err
+}
+func (f *fakeClient) SetFeature(_ context.Context, key string, enabled bool) error {
+	f.gotFeatKey, f.gotFeatOn, f.gotFeatSet = key, enabled, true
 	return f.err
 }
 func (f *fakeClient) Raw(_ context.Context, args string) (string, error) {

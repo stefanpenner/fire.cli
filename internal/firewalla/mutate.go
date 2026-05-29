@@ -120,6 +120,34 @@ func (c *Client) SetRuleDisabled(ctx context.Context, id string, disabled bool) 
 	return err
 }
 
+// SetFeature enables or disables a box-wide feature (a policy:system key such
+// as adblock, family, doh) the way the app does: through HostManager so the
+// change is persisted AND the running FireMain enforces it. Object-valued
+// features (e.g. {state, …}) keep their other fields and only flip "state".
+func (c *Client) SetFeature(ctx context.Context, key string, enabled bool) error {
+	body := `const HostManager=require("./net2/HostManager.js");const hm=new HostManager();` +
+		`const key=process.env.FIRE_KEY;const on=process.env.FIRE_ON==="1";` +
+		`await hm.loadPolicyAsync();` +
+		`const cur=hm.policy?hm.policy[key]:undefined;let val=on;` +
+		`if(cur&&typeof cur==="object"&&!Array.isArray(cur)){val=Object.assign({},cur,{state:on});}` +
+		`await hm.setPolicyAsync(key,val);` +
+		`console.log(JSON.stringify({key:key,state:on}));process.exit(0);`
+	env := map[string]string{"FIRE_KEY": key, "FIRE_ON": "0"}
+	if enabled {
+		env["FIRE_ON"] = "1"
+	}
+	// HostManager scripts don't need PolicyManager2; run the body directly.
+	_, err := c.runNode(ctx, wrapAsync(body), env)
+	return err
+}
+
+// wrapAsync wraps a body as an immediately-invoked async function with a
+// uniform error handler. The body must console.log its result and process.exit.
+func wrapAsync(body string) string {
+	return `(async()=>{` + body +
+		`})().catch(e=>{console.error(e&&(e.message||e));process.exit(1);});`
+}
+
 // lastLine returns the last non-empty line of s (node logging may precede our
 // JSON result line).
 func lastLine(s string) string {

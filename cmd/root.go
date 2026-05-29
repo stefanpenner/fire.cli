@@ -32,6 +32,7 @@ type Client interface {
 	DeleteMatching(ctx context.Context, spec firewalla.RuleSpec) (int, error)
 	DeleteRule(ctx context.Context, id string) error
 	SetRuleDisabled(ctx context.Context, id string, disabled bool) error
+	SetFeature(ctx context.Context, key string, enabled bool) error
 	Raw(ctx context.Context, args string) (string, error)
 }
 
