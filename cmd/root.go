@@ -108,6 +108,8 @@ func NewRootCmd(app *App) *cobra.Command {
 		newFeaturesCmd(app),
 		newBlockCmd(app),
 		newUnblockCmd(app),
+		newPauseCmd(app),
+		newResumeCmd(app),
 		newStatusCmd(app),
 		newRedisCmd(app),
 		newTUICmd(app),
