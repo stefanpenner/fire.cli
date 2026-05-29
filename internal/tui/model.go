@@ -31,6 +31,7 @@ type DataSource interface {
 	ListAlarms(ctx context.Context, limit int) ([]firewalla.Alarm, error)
 	ArchiveAlarm(ctx context.Context, id string) error
 	DeleteAlarm(ctx context.Context, id string) error
+	ListNetworks(ctx context.Context) ([]firewalla.Network, error)
 }
 
 // alarmViewLimit caps how many alarms the alarms view loads.
@@ -43,6 +44,7 @@ const (
 	deviceView viewMode = iota
 	ruleView
 	alarmView
+	networkView
 )
 
 // devicesMsg carries the result of a device (re)load.
@@ -61,6 +63,12 @@ type rulesMsg struct {
 type alarmsMsg struct {
 	alarms []firewalla.Alarm
 	err    error
+}
+
+// networksMsg carries the result of a networks (re)load.
+type networksMsg struct {
+	networks []firewalla.Network
+	err      error
 }
 
 // actionMsg carries the result of a confirmed mutation.
@@ -100,6 +108,10 @@ type Model struct {
 	alarms        []firewalla.Alarm
 	alarmCursor   int
 	alarmsLoading bool
+
+	networks        []firewalla.Network
+	networkCursor   int
+	networksLoading bool
 
 	search    textinput.Model
 	searching bool
@@ -190,6 +202,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.alarms = msg.alarms
 			m.alarmCursor = clampIndex(m.alarmCursor, len(m.alarms))
+		}
+		return m, nil
+
+	case networksMsg:
+		m.networksLoading = false
+		m.err = msg.err
+		if msg.err == nil {
+			m.networks = msg.networks
+			m.networkCursor = clampIndex(m.networkCursor, len(m.networks))
 		}
 		return m, nil
 
@@ -295,6 +316,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleRuleKey(msg)
 	case alarmView:
 		return m.handleAlarmKey(msg)
+	case networkView:
+		return m.handleNetworkKey(msg)
 	}
 
 	switch {
@@ -314,6 +337,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view = alarmView
 		m.alarmsLoading, m.status, m.err = true, "", nil
 		return m, m.loadAlarmsCmd()
+	case key.Matches(msg, m.keys.Networks):
+		m.view = networkView
+		m.networksLoading, m.status, m.err = true, "", nil
+		return m, m.loadNetworksCmd()
 	case key.Matches(msg, m.keys.Search):
 		m.searching = true
 		m.status = ""
@@ -568,6 +595,37 @@ func (m Model) alarmCmd(kind, id string) tea.Cmd {
 			return actionMsg{err: err}
 		}
 		return actionMsg{text: alarmVerbs[kind][1] + " alarm " + id}
+	}
+}
+
+// ---- networks view (read-only) ----
+
+// handleNetworkKey handles keys while the networks list is showing.
+func (m Model) handleNetworkKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Networks):
+		m.view = deviceView
+	case key.Matches(msg, m.keys.Up):
+		m.networkCursor = clampIndex(m.networkCursor-1, len(m.networks))
+	case key.Matches(msg, m.keys.Down):
+		m.networkCursor = clampIndex(m.networkCursor+1, len(m.networks))
+	case key.Matches(msg, m.keys.GoTop):
+		m.networkCursor = 0
+	case key.Matches(msg, m.keys.GoBot):
+		m.networkCursor = max(len(m.networks)-1, 0)
+	case key.Matches(msg, m.keys.Reload):
+		m.networksLoading, m.status, m.err = true, "", nil
+		return m, m.loadNetworksCmd()
+	}
+	return m, nil
+}
+
+// loadNetworksCmd fetches networks off the UI goroutine.
+func (m Model) loadNetworksCmd() tea.Cmd {
+	ds := m.ds
+	return func() tea.Msg {
+		nets, err := ds.ListNetworks(context.Background())
+		return networksMsg{networks: nets, err: err}
 	}
 }
 

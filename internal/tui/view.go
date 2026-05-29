@@ -22,14 +22,46 @@ func (m Model) View() string {
 	if m.view == alarmView {
 		return m.alarmsView()
 	}
+	if m.view == networkView {
+		return m.networksView()
+	}
 
 	var b strings.Builder
 	b.WriteString(m.headerView())
+	b.WriteString("\n")
+	b.WriteString(m.tabBar())
 	b.WriteString("\n\n")
 	b.WriteString(m.listView())
 	b.WriteString("\n")
 	b.WriteString(m.footerView())
 	return b.String()
+}
+
+// tabBar renders the view switcher with the active view highlighted.
+func (m Model) tabBar() string {
+	tabs := []struct {
+		v     viewMode
+		label string
+	}{
+		{deviceView, "devices"},
+		{ruleView, "rules"},
+		{alarmView, "alarms"},
+		{networkView, "networks"},
+	}
+	parts := make([]string, len(tabs))
+	for i, t := range tabs {
+		style := m.styles.Subtle
+		if t.v == m.view {
+			style = m.styles.Selected
+		}
+		parts[i] = style.Render(" " + t.label + " ")
+	}
+	return strings.Join(parts, m.styles.Subtle.Render("│"))
+}
+
+// viewHeader renders a non-device view's title line plus the tab bar.
+func (m Model) viewHeader(suffix string) string {
+	return m.styles.Title.Render("🔥 fire") + m.styles.Subtle.Render(suffix) + "\n" + m.tabBar()
 }
 
 func (m Model) headerView() string {
@@ -196,8 +228,7 @@ func (m Model) detailView() string {
 // rulesView renders the firewall-rules list.
 func (m Model) rulesView() string {
 	var b strings.Builder
-	b.WriteString(m.styles.Title.Render("🔥 fire") +
-		m.styles.Subtle.Render(fmt.Sprintf("  rules (%d)", len(m.rules))))
+	b.WriteString(m.viewHeader(fmt.Sprintf("  rules (%d)", len(m.rules))))
 	b.WriteString("\n\n")
 
 	switch {
@@ -255,8 +286,7 @@ func (m Model) ruleRow(r firewalla.Rule, selected bool) string {
 // alarmsView renders the recent-alarms list.
 func (m Model) alarmsView() string {
 	var b strings.Builder
-	b.WriteString(m.styles.Title.Render("🔥 fire") +
-		m.styles.Subtle.Render(fmt.Sprintf("  alarms (%d)", len(m.alarms))))
+	b.WriteString(m.viewHeader(fmt.Sprintf("  alarms (%d)", len(m.alarms))))
 	b.WriteString("\n\n")
 
 	now := m.now()
@@ -318,6 +348,54 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n-1] + "…"
+}
+
+// networksView renders the configured networks/VLANs (read-only).
+func (m Model) networksView() string {
+	var b strings.Builder
+	b.WriteString(m.viewHeader(fmt.Sprintf("  networks (%d)", len(m.networks))))
+	b.WriteString("\n\n")
+
+	switch {
+	case m.networksLoading && len(m.networks) == 0:
+		b.WriteString(m.styles.Subtle.Render("  loading…"))
+	case m.err != nil:
+		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
+	case len(m.networks) == 0:
+		b.WriteString(m.styles.Subtle.Render("  no networks"))
+	default:
+		maxRows := m.height - 5
+		if maxRows < 1 {
+			maxRows = 1
+		}
+		start := 0
+		if m.networkCursor >= maxRows {
+			start = m.networkCursor - maxRows + 1
+		}
+		end := min(start+maxRows, len(m.networks))
+		rows := make([]string, 0, end-start)
+		for i := start; i < end; i++ {
+			rows = append(rows, m.networkRow(m.networks[i], i == m.networkCursor))
+		}
+		b.WriteString(strings.Join(rows, "\n"))
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.styles.Footer.Render(m.keys.NetworksHelp()))
+	return b.String()
+}
+
+func (m Model) networkRow(n firewalla.Network, selected bool) string {
+	vlan := ""
+	if n.VLANID > 0 {
+		vlan = fmt.Sprintf("vlan %d", n.VLANID)
+	}
+	line := fmt.Sprintf("%-16s %-5s %-8s %-18s %s",
+		truncate(n.Name, 16), n.Type, vlan, n.Subnet, n.Interface)
+	if selected {
+		return m.styles.Title.Render("❯ ") + m.styles.Selected.Render(line)
+	}
+	return "  " + line
 }
 
 func (m Model) helpView() string {

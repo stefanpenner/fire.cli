@@ -14,26 +14,28 @@ import (
 
 // fakeDS is a test DataSource recording block/unblock calls.
 type fakeDS struct {
-	devices    []firewalla.Device
-	peers      []firewalla.Peer
-	rules      []firewalla.Rule
-	alarms     []firewalla.Alarm
-	listErr    error
-	trafficErr error
-	createErr  error
-	deleteErr  error
-	rulesErr   error
-	alarmsErr  error
-	gotSpec    firewalla.RuleSpec
-	gotMAC     string
-	gotRuleID  string
-	gotDisable bool
-	gotDelete  string
-	gotAlarmID string
-	gotAlarmOp string
-	gotLimit   int
-	createCnt  int
-	deleteCnt  int
+	devices     []firewalla.Device
+	peers       []firewalla.Peer
+	rules       []firewalla.Rule
+	alarms      []firewalla.Alarm
+	networks    []firewalla.Network
+	listErr     error
+	trafficErr  error
+	createErr   error
+	deleteErr   error
+	rulesErr    error
+	alarmsErr   error
+	networksErr error
+	gotSpec     firewalla.RuleSpec
+	gotMAC      string
+	gotRuleID   string
+	gotDisable  bool
+	gotDelete   string
+	gotAlarmID  string
+	gotAlarmOp  string
+	gotLimit    int
+	createCnt   int
+	deleteCnt   int
 }
 
 func (f *fakeDS) Host() string { return "pi@test" }
@@ -66,6 +68,9 @@ func (f *fakeDS) ArchiveAlarm(_ context.Context, id string) error {
 func (f *fakeDS) DeleteAlarm(_ context.Context, id string) error {
 	f.gotAlarmID, f.gotAlarmOp = id, "delete"
 	return nil
+}
+func (f *fakeDS) ListNetworks(context.Context) ([]firewalla.Network, error) {
+	return f.networks, f.networksErr
 }
 func (f *fakeDS) CreateRule(_ context.Context, spec firewalla.RuleSpec) (string, error) {
 	f.gotSpec, f.createCnt = spec, f.createCnt+1
@@ -522,6 +527,53 @@ func TestAlarmsView_ActionReloadsAlarms(t *testing.T) {
 	require.NotNil(t, cmd)
 	_, ok := cmd().(alarmsMsg)
 	assert.True(t, ok, "an action in the alarms view reloads alarms")
+}
+
+func TestNetworksView_OpensAndLists(t *testing.T) {
+	ds := &fakeDS{
+		devices: sampleDevices(),
+		networks: []firewalla.Network{
+			{Name: "Home", Type: "lan", Subnet: "192.0.2.0/24", Interface: "br0"},
+			{Name: "IoT", Type: "lan", VLANID: 2001, Subnet: "192.0.2.64/26", Interface: "eth2.2001"},
+		},
+	}
+	m := loaded(ds)
+
+	nm, cmd := m.Update(runeKey("N"))
+	m = nm.(Model)
+	assert.Equal(t, networkView, m.view)
+	require.NotNil(t, cmd)
+	nmsg, ok := cmd().(networksMsg)
+	require.True(t, ok)
+
+	nm, _ = m.Update(nmsg)
+	m = nm.(Model)
+	v := m.View()
+	assert.Contains(t, v, "networks (2)")
+	assert.Contains(t, v, "IoT")
+	assert.Contains(t, v, "vlan 2001")
+	assert.Contains(t, v, "192.0.2.64/26")
+}
+
+func TestNetworksView_EscReturnsToDevices(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices(), networks: []firewalla.Network{{Name: "Home", Type: "lan"}}}
+	m := loaded(ds)
+	nm, _ := m.Update(runeKey("N"))
+	m = nm.(Model)
+	nm, _ = m.Update(networksMsg{networks: ds.networks})
+	m = nm.(Model)
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = nm.(Model)
+	assert.Equal(t, deviceView, m.view)
+}
+
+// The tab bar lists every view and is present across views.
+func TestTabBar_ShownAcrossViews(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices()}
+	m := loaded(ds)
+	for _, label := range []string{"devices", "rules", "alarms", "networks"} {
+		assert.Contains(t, m.View(), label, "device view tab bar")
+	}
 }
 
 func TestBlock_EmptyListNoCrash(t *testing.T) {
