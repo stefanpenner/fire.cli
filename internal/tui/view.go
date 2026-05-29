@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stefanpenner/fire.cli/internal/firewalla"
 )
 
@@ -24,6 +25,9 @@ func (m Model) View() string {
 	}
 	if m.view == networkView {
 		return m.networksView()
+	}
+	if m.view == wanView {
+		return m.wansView()
 	}
 
 	var b strings.Builder
@@ -47,6 +51,7 @@ func (m Model) tabBar() string {
 		{ruleView, "rules"},
 		{alarmView, "alarms"},
 		{networkView, "networks"},
+		{wanView, "wan"},
 	}
 	parts := make([]string, len(tabs))
 	for i, t := range tabs {
@@ -415,6 +420,68 @@ func (m Model) networkRow(n firewalla.Network, selected bool) string {
 		return m.styles.Title.Render("❯ ") + m.styles.Selected.Render(line)
 	}
 	return "  " + line
+}
+
+// wansView renders the internet uplinks and their live health (read-only).
+func (m Model) wansView() string {
+	var b strings.Builder
+	b.WriteString(m.viewHeader(fmt.Sprintf("  wan (%d)", len(m.wans))))
+	b.WriteString("\n\n")
+
+	switch {
+	case m.wansLoading && len(m.wans) == 0:
+		b.WriteString(m.styles.Subtle.Render("  loading…"))
+	case m.err != nil:
+		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
+	case len(m.wans) == 0:
+		b.WriteString(m.styles.Subtle.Render("  no uplinks"))
+	default:
+		maxRows := m.height - 5
+		if maxRows < 1 {
+			maxRows = 1
+		}
+		start := 0
+		if m.wanCursor >= maxRows {
+			start = m.wanCursor - maxRows + 1
+		}
+		end := min(start+maxRows, len(m.wans))
+		rows := make([]string, 0, end-start)
+		for i := start; i < end; i++ {
+			rows = append(rows, m.wanRow(m.wans[i], i == m.wanCursor))
+		}
+		b.WriteString(strings.Join(rows, "\n"))
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.styles.Footer.Render(m.keys.WANHelp()))
+	return b.String()
+}
+
+func (m Model) wanRow(w firewalla.WAN, selected bool) string {
+	state, stStyle := m.wanHealth(w)
+	inUse := " "
+	if w.Active {
+		inUse = "●"
+	}
+	line := fmt.Sprintf("%-16s %-8s %-9s %-16s", truncate(w.Name, 16), w.Interface, w.Role, state)
+	if selected {
+		return m.styles.Title.Render("❯ ") + stStyle.Render(inUse) + " " + m.styles.Selected.Render(line)
+	}
+	return "  " + stStyle.Render(inUse) + " " + line
+}
+
+// wanHealth summarizes a WAN's carrier/ping/dns checks as a label + style.
+func (m Model) wanHealth(w firewalla.WAN) (string, lipgloss.Style) {
+	switch {
+	case !w.Carrier:
+		return "down", m.styles.Offline
+	case w.Ping && w.DNS:
+		return "healthy", m.styles.Online
+	case w.Ping || w.DNS:
+		return "degraded", m.styles.Status
+	default:
+		return "no connectivity", m.styles.Offline
+	}
 }
 
 func (m Model) helpView() string {

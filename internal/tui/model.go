@@ -32,6 +32,7 @@ type DataSource interface {
 	ArchiveAlarm(ctx context.Context, id string) error
 	DeleteAlarm(ctx context.Context, id string) error
 	ListNetworks(ctx context.Context) ([]firewalla.Network, error)
+	ListWANs(ctx context.Context) ([]firewalla.WAN, error)
 }
 
 // alarmViewLimit caps how many alarms the alarms view loads.
@@ -45,6 +46,7 @@ const (
 	ruleView
 	alarmView
 	networkView
+	wanView
 )
 
 // devicesMsg carries the result of a device (re)load.
@@ -69,6 +71,12 @@ type alarmsMsg struct {
 type networksMsg struct {
 	networks []firewalla.Network
 	err      error
+}
+
+// wansMsg carries the result of a WAN (re)load.
+type wansMsg struct {
+	wans []firewalla.WAN
+	err  error
 }
 
 // actionMsg carries the result of a confirmed mutation.
@@ -113,6 +121,10 @@ type Model struct {
 	networks        []firewalla.Network
 	networkCursor   int
 	networksLoading bool
+
+	wans        []firewalla.WAN
+	wanCursor   int
+	wansLoading bool
 
 	search    textinput.Model
 	searching bool
@@ -214,6 +226,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.networks = msg.networks
 			m.networkCursor = clampIndex(m.networkCursor, len(m.networks))
+		}
+		return m, nil
+
+	case wansMsg:
+		m.wansLoading = false
+		m.err = msg.err
+		if msg.err == nil {
+			m.wans = msg.wans
+			m.wanCursor = clampIndex(m.wanCursor, len(m.wans))
 		}
 		return m, nil
 
@@ -321,6 +342,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleAlarmKey(msg)
 	case networkView:
 		return m.handleNetworkKey(msg)
+	case wanView:
+		return m.handleWanKey(msg)
 	}
 
 	switch {
@@ -344,6 +367,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view = networkView
 		m.networksLoading, m.status, m.err = true, "", nil
 		return m, m.loadNetworksCmd()
+	case key.Matches(msg, m.keys.WAN):
+		m.view = wanView
+		m.wansLoading, m.status, m.err = true, "", nil
+		return m, m.loadWansCmd()
 	case key.Matches(msg, m.keys.Search):
 		m.searching = true
 		m.status = ""
@@ -647,6 +674,37 @@ func (m Model) loadNetworksCmd() tea.Cmd {
 	return func() tea.Msg {
 		nets, err := ds.ListNetworks(context.Background())
 		return networksMsg{networks: nets, err: err}
+	}
+}
+
+// ---- WAN view (read-only) ----
+
+// handleWanKey handles keys while the WAN list is showing.
+func (m Model) handleWanKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.WAN):
+		m.view = deviceView
+	case key.Matches(msg, m.keys.Up):
+		m.wanCursor = clampIndex(m.wanCursor-1, len(m.wans))
+	case key.Matches(msg, m.keys.Down):
+		m.wanCursor = clampIndex(m.wanCursor+1, len(m.wans))
+	case key.Matches(msg, m.keys.GoTop):
+		m.wanCursor = 0
+	case key.Matches(msg, m.keys.GoBot):
+		m.wanCursor = max(len(m.wans)-1, 0)
+	case key.Matches(msg, m.keys.Reload):
+		m.wansLoading, m.status, m.err = true, "", nil
+		return m, m.loadWansCmd()
+	}
+	return m, nil
+}
+
+// loadWansCmd fetches the internet uplinks off the UI goroutine.
+func (m Model) loadWansCmd() tea.Cmd {
+	ds := m.ds
+	return func() tea.Msg {
+		wans, err := ds.ListWANs(context.Background())
+		return wansMsg{wans: wans, err: err}
 	}
 }
 

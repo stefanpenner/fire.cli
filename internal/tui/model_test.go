@@ -19,6 +19,7 @@ type fakeDS struct {
 	rules       []firewalla.Rule
 	alarms      []firewalla.Alarm
 	networks    []firewalla.Network
+	wans        []firewalla.WAN
 	listErr     error
 	trafficErr  error
 	createErr   error
@@ -26,6 +27,7 @@ type fakeDS struct {
 	rulesErr    error
 	alarmsErr   error
 	networksErr error
+	wansErr     error
 	gotSpec     firewalla.RuleSpec
 	gotMAC      string
 	gotRuleID   string
@@ -71,6 +73,9 @@ func (f *fakeDS) DeleteAlarm(_ context.Context, id string) error {
 }
 func (f *fakeDS) ListNetworks(context.Context) ([]firewalla.Network, error) {
 	return f.networks, f.networksErr
+}
+func (f *fakeDS) ListWANs(context.Context) ([]firewalla.WAN, error) {
+	return f.wans, f.wansErr
 }
 func (f *fakeDS) CreateRule(_ context.Context, spec firewalla.RuleSpec) (string, error) {
 	f.gotSpec, f.createCnt = spec, f.createCnt+1
@@ -584,6 +589,44 @@ func TestTabBar_ShownAcrossViews(t *testing.T) {
 	for _, label := range []string{"devices", "rules", "alarms", "networks"} {
 		assert.Contains(t, m.View(), label, "device view tab bar")
 	}
+}
+
+func TestWANView_OpensAndShowsHealth(t *testing.T) {
+	ds := &fakeDS{
+		devices: sampleDevices(),
+		wans: []firewalla.WAN{
+			{Name: "ISP-A", Interface: "eth0", Role: "primary", Active: true, Carrier: true, Ping: true, DNS: true},
+			{Name: "ISP-B", Interface: "eth3", Role: "standby", Carrier: false},
+		},
+	}
+	m := loaded(ds)
+
+	nm, cmd := m.Update(runeKey("W"))
+	m = nm.(Model)
+	assert.Equal(t, wanView, m.view)
+	require.NotNil(t, cmd)
+	wm, ok := cmd().(wansMsg)
+	require.True(t, ok)
+
+	nm, _ = m.Update(wm)
+	m = nm.(Model)
+	v := m.View()
+	assert.Contains(t, v, "wan (2)")
+	assert.Contains(t, v, "ISP-A")
+	assert.Contains(t, v, "healthy")
+	assert.Contains(t, v, "down") // ISP-B has no carrier
+}
+
+func TestWANView_EscReturnsToDevices(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices(), wans: []firewalla.WAN{{Name: "ISP-A"}}}
+	m := loaded(ds)
+	nm, _ := m.Update(runeKey("W"))
+	m = nm.(Model)
+	nm, _ = m.Update(wansMsg{wans: ds.wans})
+	m = nm.(Model)
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = nm.(Model)
+	assert.Equal(t, deviceView, m.view)
 }
 
 func TestBlock_EmptyListNoCrash(t *testing.T) {

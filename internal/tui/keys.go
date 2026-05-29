@@ -29,6 +29,7 @@ type KeyMap struct {
 
 	// networks view
 	Networks key.Binding
+	WAN      key.Binding
 }
 
 // DefaultKeyMap returns the default key bindings.
@@ -56,11 +57,17 @@ func DefaultKeyMap() KeyMap {
 		AlarmArchive: key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
 
 		Networks: key.NewBinding(key.WithKeys("N"), key.WithHelp("N", "networks")),
+		WAN:      key.NewBinding(key.WithKeys("W"), key.WithHelp("W", "wan")),
 	}
 }
 
 // NetworksHelp is the one-line footer help shown in the networks view.
 func (k KeyMap) NetworksHelp() string {
+	return "↑↓ nav • r reload • esc devices • q quit"
+}
+
+// WANHelp is the one-line footer help shown in the WAN view.
+func (k KeyMap) WANHelp() string {
 	return "↑↓ nav • r reload • esc devices • q quit"
 }
 
@@ -76,7 +83,7 @@ func (k KeyMap) AlarmsHelp() string {
 
 // ShortHelp is the one-line footer help for normal mode.
 func (k KeyMap) ShortHelp() string {
-	return "↑↓ nav • enter detail • / search • b block • u unblock • R rules • A alarms • N nets • ? help • q quit"
+	return "↑↓ nav • enter detail • / search • b block • u unblock • R rules • A alarms • N nets • W wan • ? help • q quit"
 }
 
 // SearchHelp is the footer help shown while typing a search.
@@ -96,6 +103,7 @@ func (k KeyMap) FullHelp() [][2]string {
 		{"R", "Rules view (e/d/x to enable/disable/delete)"},
 		{"A", "Alarms view (a/x to archive/delete)"},
 		{"N", "Networks view"},
+		{"W", "WAN/uplinks view"},
 		{"r", "Reload list"},
 		{"?", "Toggle this help"},
 		{"q / ctrl+c", "Quit"},
