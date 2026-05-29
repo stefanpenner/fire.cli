@@ -22,7 +22,7 @@ first**:
 - device names → generic labels ("Example Phone", "Example Hot Tub").
 - timestamps → round/synthetic epoch values.
 
-The default `--host` is the generic `pi@fire`; never hardcode a real box
+The default `--host` is the generic `pi@fire.walla`; never hardcode a real box
 hostname, IP, or key path.
 
 When running the CLI live against a real box for verification, prefer commands

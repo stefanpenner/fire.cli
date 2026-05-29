@@ -18,6 +18,11 @@ type fakeClient struct {
 	devices   []firewalla.Device
 	resolvers []firewalla.Resolver
 	dns       []firewalla.DNSQuery
+	networks  []firewalla.Network
+	rules     []firewalla.Rule
+	wans      []firewalla.WAN
+	dataUsage firewalla.DataUsageReport
+	peers     []firewalla.Peer
 	rawOut    string
 	err       error
 
@@ -39,6 +44,22 @@ func (f *fakeClient) DNSByDevice(_ context.Context, mac string, limit int) ([]fi
 func (f *fakeClient) WhoResolved(_ context.Context, domain string) ([]firewalla.Resolver, error) {
 	f.gotDomain = domain
 	return f.resolvers, f.err
+}
+func (f *fakeClient) ListNetworks(context.Context) ([]firewalla.Network, error) {
+	return f.networks, f.err
+}
+func (f *fakeClient) ListRules(context.Context) ([]firewalla.Rule, error) {
+	return f.rules, f.err
+}
+func (f *fakeClient) ListWANs(context.Context) ([]firewalla.WAN, error) {
+	return f.wans, f.err
+}
+func (f *fakeClient) DataUsage(context.Context) (firewalla.DataUsageReport, error) {
+	return f.dataUsage, f.err
+}
+func (f *fakeClient) Traffic(_ context.Context, mac string) ([]firewalla.Peer, error) {
+	f.gotMAC = mac
+	return f.peers, f.err
 }
 func (f *fakeClient) Raw(_ context.Context, args string) (string, error) {
 	f.gotRawArgs = args

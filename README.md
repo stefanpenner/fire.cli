@@ -24,19 +24,30 @@ Requires Go 1.26+ and SSH access to the box (key-based, non-interactive).
 ## Usage
 
 ```sh
-fire --host pi@fire status            # is the box reachable? how many devices?
+fire --host pi@fire.walla status      # is the box reachable? how many devices?
 fire devices                          # list devices (online/offline, last seen)
 fire devices --json | jq '.[].name'   # machine-readable
 fire dns who broker.example.com       # which clients resolved this domain?
 fire dns device AA:BB:CC:DD:EE:FF     # recent DNS lookups by a device
+fire networks                         # networks & VLANs (alias: vlans)
+fire wan                              # internet uplinks: dual-WAN role + live health
+fire data                             # data-plan usage this period, per WAN (alias: usage)
+fire rules                            # firewall block/allow rules (--all for disabled)
+fire traffic "Living Room TV"         # who a device talks to (internet + LAN peers)
+fire traffic phone laptop             # traffic between two devices
+fire traffic phone --with spotify.com # …filtered to a destination
 fire redis keys 'policy:*'            # escape hatch: raw redis-cli on the box
 ```
 
-Global flags: `--host` (ssh destination, default `pi@fire`), `--json`,
+`traffic` accepts a MAC, IP, or device name for both the device and the peer.
+Internet peers show as domains/IPs (from Firewalla's `sumflow` rollups); LAN
+peers resolve to device names (from `flow:local`/`sumflow:…:local`).
+
+Global flags: `--host` (ssh destination, default `pi@fire.walla`), `--json`,
 `--no-color`. Color is auto-disabled for pipes and when `NO_COLOR` is set.
 
 > The `redis` subcommand passes everything through to `redis-cli`, so put global
-> flags **before** it: `fire --host pi@fire redis ping`.
+> flags **before** it: `fire --host pi@fire.walla redis ping`.
 
 ## Architecture
 

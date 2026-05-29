@@ -21,6 +21,11 @@ type Client interface {
 	ListDevices(ctx context.Context) ([]firewalla.Device, error)
 	DNSByDevice(ctx context.Context, mac string, limit int) ([]firewalla.DNSQuery, error)
 	WhoResolved(ctx context.Context, domain string) ([]firewalla.Resolver, error)
+	ListNetworks(ctx context.Context) ([]firewalla.Network, error)
+	ListRules(ctx context.Context) ([]firewalla.Rule, error)
+	ListWANs(ctx context.Context) ([]firewalla.WAN, error)
+	DataUsage(ctx context.Context) (firewalla.DataUsageReport, error)
+	Traffic(ctx context.Context, mac string) ([]firewalla.Peer, error)
 	Raw(ctx context.Context, args string) (string, error)
 }
 
@@ -68,7 +73,7 @@ func NewRootCmd(app *App) *cobra.Command {
 	root.SetErr(app.Err)
 
 	pf := root.PersistentFlags()
-	pf.StringVar(&app.Host, "host", "pi@fire", "ssh destination of the Firewalla box")
+	pf.StringVar(&app.Host, "host", "pi@fire.walla", "ssh destination of the Firewalla box")
 	pf.BoolVar(&app.JSON, "json", false, "output JSON instead of a table")
 	pf.BoolVar(&app.NoColor, "no-color", false, "disable colored output")
 
@@ -76,6 +81,11 @@ func NewRootCmd(app *App) *cobra.Command {
 		newVersionCmd(app),
 		newDevicesCmd(app),
 		newDNSCmd(app),
+		newNetworksCmd(app),
+		newRulesCmd(app),
+		newWANCmd(app),
+		newDataCmd(app),
+		newTrafficCmd(app),
 		newStatusCmd(app),
 		newRedisCmd(app),
 	)
