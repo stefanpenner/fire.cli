@@ -1,0 +1,38 @@
+@@DEVICE@@ host:mac:AA:BB:CC:DD:EE:01
+lastFrom
+arp
+bname
+Example Phone
+lastActiveTimestamp
+1700000575.492
+detect
+{"type":"phone","cloud":{}}
+dnsmasq.dhcp.leaseName
+Example Phone
+mac
+AA:BB:CC:DD:EE:01
+bonjourName
+Example-Phone
+ipv4
+192.0.2.10
+ipv4Addr
+192.0.2.10
+macVendor
+Acme Devices, Inc.
+firstFoundTimestamp
+1690000842.156
+@@DEVICE@@ host:mac:AA:BB:CC:DD:EE:02
+name
+Example Hot Tub
+mac
+AA:BB:CC:DD:EE:02
+ipv4Addr
+192.0.2.20
+macVendor
+Unknown
+lastActiveTimestamp
+1700000007.464
+firstFoundTimestamp
+1680000320.856
+detect
+{"type":"spa"}

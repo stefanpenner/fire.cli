@@ -1,0 +1,4 @@
+{"ts":1700000004.8,"uid":"Cabc","id.orig_h":"192.0.2.10","id.orig_p":51000,"id.resp_h":"192.0.2.1","id.resp_p":53,"proto":"udp","query":"broker.example.com","qtype_name":"A","answers":["198.51.100.7"]}
+{"ts":1700000010.1,"uid":"Cdef","id.orig_h":"192.0.2.10","id.orig_p":51001,"id.resp_h":"192.0.2.1","id.resp_p":53,"proto":"udp","query":"broker.example.com","qtype_name":"A","answers":["198.51.100.7"]}
+{"ts":1700000011.2,"uid":"Cghi","id.orig_h":"192.0.2.11","id.orig_p":51002,"id.resp_h":"192.0.2.1","id.resp_p":53,"proto":"udp","query":"broker.example.com","qtype_name":"A","answers":["198.51.100.7"]}
+{"ts":1700000012.3,"uid":"Cjkl","id.orig_h":"192.0.2.10","id.orig_p":51003,"id.resp_h":"192.0.2.1","id.resp_p":53,"proto":"udp","query":"api.example.com","qtype_name":"A","answers":["198.51.100.77"]}
