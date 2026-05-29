@@ -81,6 +81,7 @@ type actionMsg struct {
 type detailMsg struct {
 	mac   string
 	peers []firewalla.Peer
+	rules []firewalla.Rule // rules targeting this device (supplementary)
 	err   error
 }
 
@@ -124,10 +125,12 @@ type Model struct {
 	err      error
 }
 
-// detailState backs the per-device detail pane (its top traffic peers).
+// detailState backs the per-device detail pane (its top traffic peers and the
+// rules targeting it).
 type detailState struct {
 	device  firewalla.Device
 	peers   []firewalla.Peer
+	rules   []firewalla.Rule
 	loading bool
 	err     error
 }
@@ -236,7 +239,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case detailMsg:
 		if m.detail != nil && m.detail.device.MAC == msg.mac {
 			m.detail.loading = false
-			m.detail.peers, m.detail.err = msg.peers, msg.err
+			m.detail.peers, m.detail.rules, m.detail.err = msg.peers, msg.rules, msg.err
 		}
 		return m, nil
 
@@ -363,13 +366,31 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// detailCmd loads the selected device's traffic peers off the UI goroutine.
+// detailCmd loads the selected device's traffic peers (and the rules targeting
+// it) off the UI goroutine.
 func (m Model) detailCmd(d firewalla.Device) tea.Cmd {
 	ds, mac := m.ds, d.MAC
 	return func() tea.Msg {
 		peers, err := ds.Traffic(context.Background(), mac)
-		return detailMsg{mac: mac, peers: peers, err: err}
+		if err != nil {
+			return detailMsg{mac: mac, err: err}
+		}
+		// Rules are supplementary; ignore their error so a rules hiccup doesn't
+		// blank the whole pane.
+		rules, _ := ds.ListRules(context.Background())
+		return detailMsg{mac: mac, peers: peers, rules: rulesForMAC(rules, mac)}
 	}
+}
+
+// rulesForMAC returns the rules that target the given device MAC.
+func rulesForMAC(rules []firewalla.Rule, mac string) []firewalla.Rule {
+	var out []firewalla.Rule
+	for _, r := range rules {
+		if strings.EqualFold(r.Target, mac) {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // stageAction records a block/unblock for the selected device, to be confirmed

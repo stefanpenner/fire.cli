@@ -216,6 +216,25 @@ func (m Model) detailView() string {
 		}
 	}
 
+	// Rules targeting this device (only meaningful once the load completes).
+	if !m.detail.loading && m.detail.err == nil {
+		b.WriteString("\n")
+		b.WriteString(m.styles.Header.Render("  Rules"))
+		b.WriteString("\n")
+		if len(m.detail.rules) == 0 {
+			b.WriteString(m.styles.Subtle.Render("  none"))
+		} else {
+			for _, r := range m.detail.rules {
+				state, stStyle := "on ", m.styles.Online
+				if r.Disabled {
+					state, stStyle = "off", m.styles.Offline
+				}
+				fmt.Fprintf(&b, "  %s %-6s %-6s %s\n",
+					stStyle.Render(state), r.ID, r.Action, r.Type)
+			}
+		}
+	}
+
 	b.WriteString("\n")
 	if m.pending != nil {
 		b.WriteString(m.confirmBar())

@@ -288,6 +288,10 @@ func TestDetail_OpensAndLoadsTraffic(t *testing.T) {
 			{Label: "video.example.com", Kind: "internet", Download: 409600, Upload: 2048},
 			{PeerMAC: "AA:BB:CC:DD:EE:02", Kind: "device", Download: 1024},
 		},
+		rules: []firewalla.Rule{
+			{ID: "77", Action: "block", Type: "mac", Target: "aa:bb:cc:dd:ee:03"}, // targets Old Laptop (case-insensitive)
+			{ID: "88", Action: "block", Type: "dns", Target: "ads.example.net"},   // unrelated
+		},
 	}
 	m := loaded(ds)
 
@@ -308,10 +312,16 @@ func TestDetail_OpensAndLoadsTraffic(t *testing.T) {
 	m = nm.(Model)
 	assert.False(t, m.detail.loading)
 
+	// Only the rule targeting this device's MAC is kept.
+	require.Len(t, m.detail.rules, 1)
+	assert.Equal(t, "77", m.detail.rules[0].ID)
+
 	v := m.View()
 	assert.Contains(t, v, "Old Laptop")        // header
 	assert.Contains(t, v, "video.example.com") // top peer
 	assert.Contains(t, v, "Top traffic")
+	assert.Contains(t, v, "Rules") // rules section
+	assert.Contains(t, v, "77")    // the targeting rule
 }
 
 func TestDetail_EscCloses(t *testing.T) {
