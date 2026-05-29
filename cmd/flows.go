@@ -19,14 +19,16 @@ func newTrafficCmd(app *App) *cobra.Command {
 		Short:   "Show who a device is talking to (internet domains and LAN devices)",
 		Long: "Show the peers a device exchanged traffic with — internet destinations\n" +
 			"by domain/IP and other LAN devices by name — newest rollup, by bytes.\n\n" +
-			"<device> and [peer] accept a MAC, IP, or device name. Give a peer (or\n" +
-			"--with) to filter to traffic with that endpoint, e.g. between two devices.",
-		Args: cobra.RangeArgs(1, 2),
+			"<device> and [peer] accept a MAC, IP, or device name (run `fire devices`\n" +
+			"to see them, or tab-complete). Give a peer (or --with) to filter to traffic\n" +
+			"with that endpoint, e.g. between two devices.",
+		Args:              cobra.RangeArgs(1, 2),
+		ValidArgsFunction: app.completeDevice,
 		RunE: func(c *cobra.Command, args []string) error {
 			idx := loadDevices(c.Context(), app)
 			mac := idx.resolveMAC(args[0])
 			if mac == "" {
-				return fmt.Errorf("no device matches %q", args[0])
+				return fmt.Errorf("no device matches %q; run `fire devices` to list devices (name, IP, or MAC all work)", args[0])
 			}
 			if len(args) == 2 {
 				with = args[1]

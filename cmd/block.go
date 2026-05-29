@@ -14,14 +14,15 @@ func newBlockCmd(app *App) *cobra.Command {
 		forDur  time.Duration
 	)
 	cmd := &cobra.Command{
-		Use:   "block <device>",
-		Short: "Block a device's internet access (by name, MAC, or IP)",
-		Args:  cobra.ExactArgs(1),
+		Use:               "block <device>",
+		Short:             "Block a device's internet access (by name, MAC, or IP)",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: app.completeDevice,
 		RunE: func(c *cobra.Command, args []string) error {
 			idx := loadDevices(c.Context(), app)
 			mac := idx.resolveMAC(args[0])
 			if mac == "" {
-				return fmt.Errorf("no device matches %q", args[0])
+				return fmt.Errorf("no device matches %q; run `fire devices` to list devices", args[0])
 			}
 			label := idx.name(mac)
 			action := fmt.Sprintf("block %s (%s)", label, mac)
@@ -51,14 +52,15 @@ func newBlockCmd(app *App) *cobra.Command {
 func newUnblockCmd(app *App) *cobra.Command {
 	var confirm bool
 	cmd := &cobra.Command{
-		Use:   "unblock <device>",
-		Short: "Remove a device's block (by name, MAC, or IP)",
-		Args:  cobra.ExactArgs(1),
+		Use:               "unblock <device>",
+		Short:             "Remove a device's block (by name, MAC, or IP)",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: app.completeDevice,
 		RunE: func(c *cobra.Command, args []string) error {
 			idx := loadDevices(c.Context(), app)
 			mac := idx.resolveMAC(args[0])
 			if mac == "" {
-				return fmt.Errorf("no device matches %q", args[0])
+				return fmt.Errorf("no device matches %q; run `fire devices` to list devices", args[0])
 			}
 			label := idx.name(mac)
 			if !app.confirmed(confirm, fmt.Sprintf("unblock %s (%s)", label, mac)) {

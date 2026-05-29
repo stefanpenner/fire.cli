@@ -6,7 +6,33 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
 )
+
+// completeDevice is a cobra completion function offering device names and IPs
+// for arguments that take a device (traffic, block, unblock). It queries the
+// box, so tab-completion doubles as discovery of valid values.
+func (app *App) completeDevice(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	_ = app.connect(cmd, nil) // completion skips PersistentPreRunE; wire the client
+	if app.Client == nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	devices, err := app.Client.ListDevices(cmd.Context())
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	var out []string
+	for _, d := range devices {
+		if d.Name != "" {
+			out = append(out, d.Name)
+		}
+		if d.IP != "" {
+			out = append(out, d.IP)
+		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
+}
 
 var macRE = regexp.MustCompile(`^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$`)
 

@@ -104,6 +104,18 @@ func TestTraffic_FilterBetweenTwoDevices(t *testing.T) {
 func TestTraffic_UnknownDevice(t *testing.T) {
 	_, _, err := exec(t, &fakeClient{}, "traffic", "Nonexistent")
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fire devices") // error points to discovery
+}
+
+func TestTraffic_Completion(t *testing.T) {
+	client := &fakeClient{devices: []firewalla.Device{
+		{Name: "Phone", IP: "192.0.2.10", MAC: "AA:BB:CC:DD:EE:01"},
+	}}
+	// cobra's __complete invokes the ValidArgsFunction and prints suggestions.
+	out, _, err := exec(t, client, "__complete", "traffic", "")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Phone")
+	assert.Contains(t, out, "192.0.2.10")
 }
 
 func TestAlarms_Table(t *testing.T) {
