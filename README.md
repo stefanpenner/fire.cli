@@ -50,12 +50,18 @@ fire redis keys 'policy:*'            # escape hatch: raw redis-cli on the box
 
 ### Interactive dashboard
 
-`fire tui` (or just `fire` in a terminal) opens a Bubble Tea dashboard: a
-searchable device list with online/offline status. Navigate with ↑/↓ (or
-`j`/`k`, `g`/`G`), `/` to fuzzy-search by name/IP/MAC, **enter** to open a
-device's detail pane (top traffic peers), `b`/`u` to block/unblock the
-selection (confirmed with `y`), `r` to reload, `?` for help, `q` to quit.
+`fire tui` (or just `fire` in a terminal) opens a Bubble Tea dashboard with a
+tab bar across four views — **devices │ rules │ alarms │ networks** — switched
+with `R`/`A`/`N` (and `esc` back to devices). Navigate any list with ↑/↓ (or
+`j`/`k`, `g`/`G`); `r` reloads, `?` shows help, `q` quits. Every mutation is
+confirmed with `y` (`n`/`esc` cancels), mirroring the CLI's `--confirm` gate.
 Piped or redirected, `fire` prints help instead.
+
+- **devices** — `/` fuzzy-searches by name/IP/MAC; **enter** opens a device's
+  detail pane (top traffic peers); `b`/`u` block/unblock the selection.
+- **rules** — `e`/`d`/`x` enable/disable/delete the selected rule.
+- **alarms** — `a` archives, `x` deletes the selected alarm.
+- **networks** — read-only list of networks/VLANs.
 
 ### Pickers everywhere
 
