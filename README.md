@@ -24,6 +24,7 @@ Requires Go 1.26+ and SSH access to the box (key-based, non-interactive).
 ## Usage
 
 ```sh
+fire                                  # launch the interactive dashboard (alias: fire tui)
 fire --host pi@fire.walla status      # is the box reachable? how many devices?
 fire devices                          # list devices (online/offline, last seen)
 fire devices --json | jq '.[].name'   # machine-readable
@@ -41,19 +42,35 @@ fire traffic phone --with spotify.com # …filtered to a destination
 fire block "Kids iPad" --confirm      # block a device (--for 1h to auto-expire)
 fire unblock "Kids iPad" --confirm    # remove the block
 fire rules add block dns ads.example.com --confirm   # create a rule
-fire rules rm 215 --confirm           # delete a rule (also: enable/disable <id>)
+fire rules rm --confirm               # pick a rule to delete (also: enable/disable [id])
+fire features enable adblock --confirm # toggle a box feature (also: disable; by key or name)
+fire alarms ack --confirm             # pick an alarm to acknowledge (also: rm to delete)
 fire redis keys 'policy:*'            # escape hatch: raw redis-cli on the box
 ```
 
-Run `traffic`, `block`, or `unblock` with **no device argument** in a terminal
-and an interactive fuzzy finder opens over your devices (type to filter on name,
-IP, or MAC; ↑/↓ to move; enter to select; esc to cancel). In a pipe/script it
-falls back to requiring an explicit argument.
+### Interactive dashboard
 
-Mutating commands (`block`, `unblock`, `rules add|rm|enable|disable`) print what
-they will do and require `--confirm` to apply. They go through Firewalla's own
-PolicyManager so changes are enforced exactly like the app, not just written to
-redis.
+`fire tui` (or just `fire` in a terminal) opens a Bubble Tea dashboard: a
+searchable device list with online/offline status. Navigate with ↑/↓ (or
+`j`/`k`, `g`/`G`), `/` to fuzzy-search by name/IP/MAC, **enter** to open a
+device's detail pane (top traffic peers), `b`/`u` to block/unblock the
+selection (confirmed with `y`), `r` to reload, `?` for help, `q` to quit.
+Piped or redirected, `fire` prints help instead.
+
+### Pickers everywhere
+
+Run a command that selects something — `traffic`/`block`/`unblock` (a device),
+`rules rm|enable|disable` (a rule), `features enable|disable` (a feature),
+`alarms archive|rm` (an alarm) — with **no argument** in a terminal and an
+interactive fuzzy finder opens over the live list (type to filter; ↑/↓ to move;
+enter to select; esc to cancel). Tab-completion offers the same values. In a
+pipe/script the commands require an explicit argument instead.
+
+Mutating commands (`block`, `unblock`, `rules add|rm|enable|disable`,
+`features enable|disable`, `alarms archive|rm`) print what they will do and
+require `--confirm` to apply. They go through Firewalla's own managers
+(PolicyManager2, HostManager, AlarmManager2) so changes are enforced exactly
+like the app, not just written to redis.
 
 `traffic` accepts a MAC, IP, or device name for both the device and the peer.
 Internet peers show as domains/IPs (from Firewalla's `sumflow` rollups); LAN
@@ -78,7 +95,10 @@ cmd (cobra)  ──►  internal/firewalla (typed Client + pure parsers)  ──
 - **transport** is the only code that touches the network. Commands and the
   client are tested against a `FakeTransport`.
 - **parsers are pure functions** tested against fixtures captured from a real
-  box (anonymized — see `CLAUDE.md`).
+  box (anonymized — see `CLAUDE.md`). Every parser also has a `Fuzz` test.
+- **`internal/tui`** is the Bubble Tea dashboard: a value-type `Model` driven
+  through a `DataSource` interface, so the whole thing is unit-tested by
+  feeding key messages and asserting on `View()` — no terminal required.
 
 ## Development
 
