@@ -14,8 +14,20 @@ func TestInit_ReturnsLoad(t *testing.T) {
 	m := NewModel(&fakeDS{devices: sampleDevices()}, fixedNow)
 	cmd := m.Init()
 	require.NotNil(t, cmd)
-	_, ok := cmd().(devicesMsg)
-	assert.True(t, ok)
+	// Init batches the device load with the spinner tick; the load must be in
+	// the batch.
+	batch, ok := cmd().(tea.BatchMsg)
+	require.True(t, ok, "Init returns a batch")
+	found := false
+	for _, c := range batch {
+		if c == nil {
+			continue
+		}
+		if _, ok := c().(devicesMsg); ok {
+			found = true
+		}
+	}
+	assert.True(t, found, "batch includes the device load")
 }
 
 func TestDeviceLabel_Fallbacks(t *testing.T) {

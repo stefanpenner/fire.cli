@@ -17,6 +17,8 @@ type KeyMap struct {
 	Quit       key.Binding
 	Enter      key.Binding
 	Cancel     key.Binding
+	NextTab    key.Binding
+	PrevTab    key.Binding
 
 	// rules view
 	Rules       key.Binding
@@ -50,6 +52,8 @@ func DefaultKeyMap() KeyMap {
 		Quit:       key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 		Enter:      key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
 		Cancel:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
+		NextTab:    key.NewBinding(key.WithKeys("tab", "l", "right"), key.WithHelp("tab/→", "next view")),
+		PrevTab:    key.NewBinding(key.WithKeys("shift+tab", "h", "left"), key.WithHelp("⇧tab/←", "prev view")),
 
 		Rules:       key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "rules")),
 		RuleEnable:  key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "enable")),
@@ -67,32 +71,32 @@ func DefaultKeyMap() KeyMap {
 
 // DataHelp is the one-line footer help shown in the data-usage view.
 func (k KeyMap) DataHelp() string {
-	return "r reload • esc devices • q quit"
+	return "tab views • r reload • esc devices • q quit"
 }
 
 // NetworksHelp is the one-line footer help shown in the networks view.
 func (k KeyMap) NetworksHelp() string {
-	return "↑↓ nav • r reload • esc devices • q quit"
+	return "↑↓ nav • tab views • r reload • esc devices • q quit"
 }
 
 // WANHelp is the one-line footer help shown in the WAN view.
 func (k KeyMap) WANHelp() string {
-	return "↑↓ nav • r reload • esc devices • q quit"
+	return "↑↓ nav • tab views • r reload • esc devices • q quit"
 }
 
 // RulesHelp is the one-line footer help shown in the rules view.
 func (k KeyMap) RulesHelp() string {
-	return "↑↓ nav • e enable • d disable • x delete • r reload • esc devices • q quit"
+	return "↑↓ nav • e enable • d disable • x delete • tab views • r reload • esc devices • q quit"
 }
 
 // AlarmsHelp is the one-line footer help shown in the alarms view.
 func (k KeyMap) AlarmsHelp() string {
-	return "↑↓ nav • a archive • x delete • r reload • esc devices • q quit"
+	return "↑↓ nav • a archive • x delete • tab views • r reload • esc devices • q quit"
 }
 
 // ShortHelp is the one-line footer help for normal mode.
 func (k KeyMap) ShortHelp() string {
-	return "↑↓ nav • enter detail • / search • o online • b block • u unblock • R rules • A alarms • N nets • W wan • D data • ? help • q quit"
+	return "↑↓ nav • tab/→ views • enter detail • / search • o online • b block • u unblock • ? help • q quit"
 }
 
 // SearchHelp is the footer help shown while typing a search.
@@ -105,17 +109,16 @@ func (k KeyMap) FullHelp() [][2]string {
 	return [][2]string{
 		{"↑/k, ↓/j", "Move selection"},
 		{"g / G", "Jump to top / bottom"},
+		{"tab / ⇧tab", "Next / previous view"},
+		{"h/l, ←/→", "Previous / next view"},
+		{"1–6", "Jump to a view (devices…data)"},
 		{"enter", "Device detail (traffic)"},
 		{"/", "Search devices (name, IP, MAC)"},
 		{"o", "Toggle online-only filter"},
 		{"b", "Block selected device"},
 		{"u", "Unblock selected device"},
-		{"R", "Rules view (e/d/x to enable/disable/delete)"},
-		{"A", "Alarms view (a/x to archive/delete)"},
-		{"N", "Networks view"},
-		{"W", "WAN/uplinks view"},
-		{"D", "Data-usage view"},
-		{"1–6", "Jump to a view (devices…data)"},
+		{"R/A/N/W/D", "Jump to rules/alarms/networks/wan/data"},
+		{"e/d/x", "Enable/disable/delete (rules) • archive/delete (alarms)"},
 		{"r", "Reload list"},
 		{"?", "Toggle this help"},
 		{"q / ctrl+c", "Quit"},

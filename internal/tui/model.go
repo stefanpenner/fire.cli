@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stefanpenner/fire.cli/internal/firewalla"
@@ -143,6 +144,7 @@ type Model struct {
 
 	search    textinput.Model
 	searching bool
+	spinner   spinner.Model
 
 	showHelp bool
 	loading  bool
@@ -178,6 +180,7 @@ func NewModel(ds DataSource, now func() time.Time) Model {
 	ti := textinput.New()
 	ti.Placeholder = "filter by name, IP, or MAC…"
 	ti.Prompt = "/"
+	sp := spinner.New(spinner.WithSpinner(spinner.Dot))
 	return Model{
 		ds:      ds,
 		now:     now,
@@ -186,6 +189,7 @@ func NewModel(ds DataSource, now func() time.Time) Model {
 		width:   80,
 		height:  24,
 		search:  ti,
+		spinner: sp,
 		loading: true,
 	}
 }
@@ -201,9 +205,27 @@ func (m Model) WithColor(enabled bool) Model {
 	return m
 }
 
+// viewOrder is the left-to-right tab order, shared by the tab bar and the
+// tab-cycling navigation (tab/⇧tab, h/l, ←/→).
+var viewOrder = []viewMode{deviceView, ruleView, alarmView, networkView, wanView, dataView}
+
+// cycleView moves delta tabs from the current view, wrapping around, and
+// switches to it.
+func (m Model) cycleView(delta int) (tea.Model, tea.Cmd) {
+	idx := 0
+	for i, v := range viewOrder {
+		if v == m.view {
+			idx = i
+			break
+		}
+	}
+	idx = (idx + delta + len(viewOrder)) % len(viewOrder)
+	return m.switchTo(viewOrder[idx])
+}
+
 // switchTo changes the active view and kicks off its (re)load, clearing any
-// transient status/error. Shared by the letter shortcuts (R/A/N/W/D) and the
-// number keys (1–6).
+// transient status/error. Shared by the tab-cycling nav, the letter shortcuts
+// (R/A/N/W/D), and the number keys (1–6).
 func (m Model) switchTo(v viewMode) (tea.Model, tea.Cmd) {
 	m.view = v
 	m.status, m.err = "", nil
@@ -229,8 +251,8 @@ func (m Model) switchTo(v viewMode) (tea.Model, tea.Cmd) {
 	}
 }
 
-// Init kicks off the first device load.
-func (m Model) Init() tea.Cmd { return m.loadCmd() }
+// Init kicks off the first device load and starts the spinner animation.
+func (m Model) Init() tea.Cmd { return tea.Batch(m.loadCmd(), m.spinner.Tick) }
 
 // loadCmd fetches devices off the UI goroutine.
 func (m Model) loadCmd() tea.Cmd {
@@ -347,6 +369,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -417,7 +444,25 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showHelp = true
 		return m, nil
 	}
-	// Number keys jump directly to a view from anywhere.
+	// View navigation works from ANY view, before per-view dispatch, so it is
+	// consistent everywhere: tab/⇧tab (and h/l, ←/→) cycle adjacent tabs, the
+	// number keys jump directly, and each view's letter jumps straight to it.
+	switch {
+	case key.Matches(msg, m.keys.NextTab):
+		return m.cycleView(1)
+	case key.Matches(msg, m.keys.PrevTab):
+		return m.cycleView(-1)
+	case key.Matches(msg, m.keys.Rules):
+		return m.switchTo(ruleView)
+	case key.Matches(msg, m.keys.Alarms):
+		return m.switchTo(alarmView)
+	case key.Matches(msg, m.keys.Networks):
+		return m.switchTo(networkView)
+	case key.Matches(msg, m.keys.WAN):
+		return m.switchTo(wanView)
+	case key.Matches(msg, m.keys.Data):
+		return m.switchTo(dataView)
+	}
 	switch msg.String() {
 	case "1":
 		return m.switchTo(deviceView)
@@ -455,16 +500,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 	case key.Matches(msg, m.keys.GoBot):
 		m.cursor = max(len(m.visible)-1, 0)
-	case key.Matches(msg, m.keys.Rules):
-		return m.switchTo(ruleView)
-	case key.Matches(msg, m.keys.Alarms):
-		return m.switchTo(alarmView)
-	case key.Matches(msg, m.keys.Networks):
-		return m.switchTo(networkView)
-	case key.Matches(msg, m.keys.WAN):
-		return m.switchTo(wanView)
-	case key.Matches(msg, m.keys.Data):
-		return m.switchTo(dataView)
 	case key.Matches(msg, m.keys.OnlineOnly):
 		m.onlineOnly = !m.onlineOnly
 		m.refilter()
@@ -572,7 +607,7 @@ func (m Model) confirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // handleRuleKey handles keys while the rules list is showing.
 func (m Model) handleRuleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Rules):
+	case key.Matches(msg, m.keys.Cancel):
 		m.view = deviceView
 	case key.Matches(msg, m.keys.Up):
 		m.ruleCursor = clampIndex(m.ruleCursor-1, len(m.rules))
@@ -668,7 +703,7 @@ func (m Model) ruleCmd(kind, id string) tea.Cmd {
 // handleAlarmKey handles keys while the alarms list is showing.
 func (m Model) handleAlarmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Alarms):
+	case key.Matches(msg, m.keys.Cancel):
 		m.view = deviceView
 	case key.Matches(msg, m.keys.Up):
 		m.alarmCursor = clampIndex(m.alarmCursor-1, len(m.alarms))
@@ -748,7 +783,7 @@ func (m Model) alarmCmd(kind, id string) tea.Cmd {
 // handleNetworkKey handles keys while the networks list is showing.
 func (m Model) handleNetworkKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Networks):
+	case key.Matches(msg, m.keys.Cancel):
 		m.view = deviceView
 	case key.Matches(msg, m.keys.Up):
 		m.networkCursor = clampIndex(m.networkCursor-1, len(m.networks))
@@ -779,7 +814,7 @@ func (m Model) loadNetworksCmd() tea.Cmd {
 // handleWanKey handles keys while the WAN list is showing.
 func (m Model) handleWanKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.WAN):
+	case key.Matches(msg, m.keys.Cancel):
 		m.view = deviceView
 	case key.Matches(msg, m.keys.Up):
 		m.wanCursor = clampIndex(m.wanCursor-1, len(m.wans))
@@ -810,7 +845,7 @@ func (m Model) loadWansCmd() tea.Cmd {
 // handleDataKey handles keys while the data-usage summary is showing.
 func (m Model) handleDataKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Data):
+	case key.Matches(msg, m.keys.Cancel):
 		m.view = deviceView
 	case key.Matches(msg, m.keys.Reload):
 		m.dataLoading, m.status, m.err = true, "", nil
