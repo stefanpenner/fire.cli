@@ -32,10 +32,11 @@ func execReal(t *testing.T, ft *transport.FakeTransport, args ...string) (string
 	t.Helper()
 	var out, errBuf bytes.Buffer
 	app := &App{
-		Out:    &out,
-		Err:    &errBuf,
-		Client: firewalla.New(ft),
-		Now:    func() time.Time { return time.Unix(1700000100, 0) },
+		Out:        &out,
+		Err:        &errBuf,
+		Client:     firewalla.New(ft),
+		Now:        func() time.Time { return time.Unix(1700000100, 0) },
+		ConfigPath: filepath.Join(t.TempDir(), "no-config.json"),
 	}
 	root := NewRootCmd(app)
 	root.SetArgs(args)

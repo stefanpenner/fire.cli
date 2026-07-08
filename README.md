@@ -123,6 +123,32 @@ Built to be driven by scripts and AI agents, not just humans:
   (`fire completion <shell>`) all work headless; name/IP resolve to a device for
   `block`/`unblock`/`pause`/`resume`/`traffic`/`dns device`.
 
+### Config file & named boxes
+
+Optional, at `~/.config/fire/config.json` (or `$XDG_CONFIG_HOME/fire/config.json`,
+or `--config <path>`). Set a default host, per-command defaults, and named
+boxes so you can target several Firewallas without retyping `--host`:
+
+```jsonc
+{
+  "default_box": "home",
+  "timeout": "45s",
+  "boxes": {
+    "home":  { "host": "pi@fire.walla" },
+    "cabin": { "host": "pi@cabin.lan" }
+  }
+}
+```
+
+```sh
+fire devices                 # uses default_box → home
+fire --box cabin devices     # target the cabin box
+fire --host pi@other status  # an explicit --host always wins
+```
+
+A missing file is fine (built-in defaults apply); a malformed one warns and
+falls back rather than failing.
+
 ## Architecture
 
 Three layers, each depending only on the one below — which is what makes it

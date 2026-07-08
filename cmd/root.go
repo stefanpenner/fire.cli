@@ -5,10 +5,12 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/stefanpenner/fire.cli/internal/config"
 	"github.com/stefanpenner/fire.cli/internal/firewalla"
 	"github.com/stefanpenner/fire.cli/internal/picker"
 	"github.com/stefanpenner/fire.cli/internal/render"
@@ -47,9 +49,14 @@ type App struct {
 
 	// persistent flags
 	Host    string
+	Box     string
 	JSON    bool
 	NoColor bool
 	Timeout time.Duration
+
+	// ConfigPath overrides the config file location (tests set this for
+	// isolation; empty means config.DefaultPath()).
+	ConfigPath string
 }
 
 func (a *App) now() time.Time {
@@ -78,7 +85,7 @@ func NewRootCmd(app *App) *cobra.Command {
 		SilenceUsage:      true,
 		SilenceErrors:     true,
 		Version:           Version,
-		PersistentPreRunE: app.connect,
+		PersistentPreRunE: app.setup,
 		// Bare `fire` in a terminal launches the interactive dashboard;
 		// piped/redirected, it falls back to printing help.
 		RunE: func(c *cobra.Command, _ []string) error {
@@ -93,6 +100,8 @@ func NewRootCmd(app *App) *cobra.Command {
 
 	pf := root.PersistentFlags()
 	pf.StringVar(&app.Host, "host", "pi@fire.walla", "ssh destination of the Firewalla box")
+	pf.StringVar(&app.Box, "box", "", "named box from the config file (see --config)")
+	pf.StringVar(&app.ConfigPath, "config", app.ConfigPath, "config file path (default ~/.config/fire/config.json)")
 	pf.BoolVar(&app.JSON, "json", false, "output JSON instead of a table")
 	pf.BoolVar(&app.NoColor, "no-color", false, "disable colored output")
 	pf.DurationVar(&app.Timeout, "timeout", 30*time.Second, "abort a remote command if it runs longer than this (0 = no limit)")
@@ -117,6 +126,36 @@ func NewRootCmd(app *App) *cobra.Command {
 		newTUICmd(app),
 	)
 	return root
+}
+
+// setup loads the config file, applies it under the CLI flags (an explicit flag
+// always wins), then connects. Runs before every command.
+func (a *App) setup(cmd *cobra.Command, args []string) error {
+	path := a.ConfigPath
+	if path == "" {
+		path = config.DefaultPath()
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		fmt.Fprintf(a.Err, "warning: %v; using defaults\n", err)
+		cfg = config.Config{}
+	}
+
+	fl := cmd.Flags()
+	if !fl.Changed("host") {
+		host, herr := cfg.ResolveHost(a.Box, a.Host)
+		if herr != nil {
+			return herr
+		}
+		a.Host = host
+	}
+	if !fl.Changed("timeout") {
+		a.Timeout = cfg.TimeoutOr(a.Timeout)
+	}
+	if !fl.Changed("no-color") && cfg.NoColor {
+		a.NoColor = true
+	}
+	return a.connect(cmd, args)
 }
 
 // connect lazily builds a real SSH-backed client when one was not injected
