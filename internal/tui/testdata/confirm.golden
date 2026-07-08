@@ -1,0 +1,7 @@
+🔥 fire  pi@test   3 devices • 2 online
+ devices │ rules │ alarms │ networks │ wan │ data 
+
+❯ ● Old Laptop                    192.0.2.30       AA:BB:CC:DD:EE:03
+  ● Example Phone                 192.0.2.10       AA:BB:CC:DD:EE:01
+  ○ Example Hot Tub               192.0.2.20       AA:BB:CC:DD:EE:02
+ CONFIRM  Block Old Laptop?   y confirm • n cancel

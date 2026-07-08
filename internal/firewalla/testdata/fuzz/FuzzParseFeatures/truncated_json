@@ -1,0 +1,2 @@
+go test fuzz v1
+string("adblock\n{\"a\":\"b\",\"c\":[1,2,")

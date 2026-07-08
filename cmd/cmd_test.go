@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -15,17 +16,34 @@ import (
 
 // fakeClient implements the Client interface and records calls.
 type fakeClient struct {
-	devices   []firewalla.Device
-	resolvers []firewalla.Resolver
-	dns       []firewalla.DNSQuery
-	rawOut    string
-	err       error
+	devices    []firewalla.Device
+	resolvers  []firewalla.Resolver
+	dns        []firewalla.DNSQuery
+	networks   []firewalla.Network
+	rules      []firewalla.Rule
+	wans       []firewalla.WAN
+	dataUsage  firewalla.DataUsageReport
+	peers      []firewalla.Peer
+	topTalkers []firewalla.TopTalker
+	alarms     []firewalla.Alarm
+	features   []firewalla.Feature
+	rawOut     string
+	err        error
 
 	// recorded inputs
-	gotDomain  string
-	gotMAC     string
-	gotLimit   int
-	gotRawArgs string
+	gotDomain   string
+	gotMAC      string
+	gotLimit    int
+	gotRawArgs  string
+	gotRuleSpec firewalla.RuleSpec
+	gotRuleID   string
+	gotDisabled bool
+	gotFeatKey  string
+	gotFeatOn   bool
+	gotFeatSet  bool
+	gotAlarmID  string
+	gotAlarmOp  string
+	createPID   string
 }
 
 func (f *fakeClient) Host() string { return "pi@test" }
@@ -40,6 +58,63 @@ func (f *fakeClient) WhoResolved(_ context.Context, domain string) ([]firewalla.
 	f.gotDomain = domain
 	return f.resolvers, f.err
 }
+func (f *fakeClient) ListNetworks(context.Context) ([]firewalla.Network, error) {
+	return f.networks, f.err
+}
+func (f *fakeClient) ListRules(context.Context) ([]firewalla.Rule, error) {
+	return f.rules, f.err
+}
+func (f *fakeClient) ListWANs(context.Context) ([]firewalla.WAN, error) {
+	return f.wans, f.err
+}
+func (f *fakeClient) DataUsage(context.Context) (firewalla.DataUsageReport, error) {
+	return f.dataUsage, f.err
+}
+func (f *fakeClient) Traffic(_ context.Context, mac string) ([]firewalla.Peer, error) {
+	f.gotMAC = mac
+	return f.peers, f.err
+}
+func (f *fakeClient) TopTalkers(context.Context) ([]firewalla.TopTalker, error) {
+	return f.topTalkers, f.err
+}
+func (f *fakeClient) ListAlarms(_ context.Context, limit int) ([]firewalla.Alarm, error) {
+	f.gotLimit = limit
+	return f.alarms, f.err
+}
+func (f *fakeClient) ListFeatures(context.Context) ([]firewalla.Feature, error) {
+	return f.features, f.err
+}
+func (f *fakeClient) CreateRule(_ context.Context, spec firewalla.RuleSpec) (string, error) {
+	f.gotRuleSpec = spec
+	if f.createPID == "" {
+		f.createPID = "999"
+	}
+	return f.createPID, f.err
+}
+func (f *fakeClient) DeleteMatching(_ context.Context, spec firewalla.RuleSpec) (int, error) {
+	f.gotRuleSpec = spec
+	return 1, f.err
+}
+func (f *fakeClient) DeleteRule(_ context.Context, id string) error {
+	f.gotRuleID = id
+	return f.err
+}
+func (f *fakeClient) SetRuleDisabled(_ context.Context, id string, disabled bool) error {
+	f.gotRuleID, f.gotDisabled = id, disabled
+	return f.err
+}
+func (f *fakeClient) SetFeature(_ context.Context, key string, enabled bool) error {
+	f.gotFeatKey, f.gotFeatOn, f.gotFeatSet = key, enabled, true
+	return f.err
+}
+func (f *fakeClient) ArchiveAlarm(_ context.Context, id string) error {
+	f.gotAlarmID, f.gotAlarmOp = id, "archive"
+	return f.err
+}
+func (f *fakeClient) DeleteAlarm(_ context.Context, id string) error {
+	f.gotAlarmID, f.gotAlarmOp = id, "delete"
+	return f.err
+}
 func (f *fakeClient) Raw(_ context.Context, args string) (string, error) {
 	f.gotRawArgs = args
 	return f.rawOut, f.err
@@ -50,10 +125,11 @@ func exec(t *testing.T, client Client, args ...string) (string, string, error) {
 	t.Helper()
 	var out, errBuf bytes.Buffer
 	app := &App{
-		Out:    &out,
-		Err:    &errBuf,
-		Client: client,
-		Now:    func() time.Time { return time.Unix(1700000100, 0) },
+		Out:        &out,
+		Err:        &errBuf,
+		Client:     client,
+		Now:        func() time.Time { return time.Unix(1700000100, 0) },
+		ConfigPath: filepath.Join(t.TempDir(), "no-config.json"), // isolate from any real config
 	}
 	root := NewRootCmd(app)
 	root.SetArgs(args)
@@ -129,9 +205,32 @@ func TestDNSDevice_PassesLimit(t *testing.T) {
 	}}
 	out, _, err := exec(t, client, "dns", "device", "aa:bb:cc:dd:ee:02", "--limit", "5")
 	require.NoError(t, err)
-	assert.Equal(t, "aa:bb:cc:dd:ee:02", client.gotMAC)
+	// A bare MAC resolves to its canonical upper-case form.
+	assert.Equal(t, "AA:BB:CC:DD:EE:02", client.gotMAC)
 	assert.Equal(t, 5, client.gotLimit)
 	assert.Contains(t, out, "broker.example.com")
+}
+
+// dns device accepts a name/IP like the other device commands, resolving it to
+// the device's MAC.
+func TestDNSDevice_ResolvesName(t *testing.T) {
+	client := &fakeClient{
+		devices: []firewalla.Device{{MAC: "AA:BB:CC:DD:EE:02", Name: "Example Phone", IP: "192.0.2.20"}},
+		dns:     []firewalla.DNSQuery{{Domain: "broker.example.com"}},
+	}
+	_, _, err := exec(t, client, "dns", "device", "Example Phone")
+	require.NoError(t, err)
+	assert.Equal(t, "AA:BB:CC:DD:EE:02", client.gotMAC)
+}
+
+// dns device rejects an unknown identifier with a helpful error, before any
+// query is issued.
+func TestDNSDevice_UnknownDevice(t *testing.T) {
+	client := &fakeClient{}
+	_, _, err := exec(t, client, "dns", "device", "nope")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no device matches")
+	assert.Empty(t, client.gotMAC)
 }
 
 func TestStatus(t *testing.T) {

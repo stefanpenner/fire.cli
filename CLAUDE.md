@@ -22,7 +22,7 @@ first**:
 - device names → generic labels ("Example Phone", "Example Hot Tub").
 - timestamps → round/synthetic epoch values.
 
-The default `--host` is the generic `pi@fire`; never hardcode a real box
+The default `--host` is the generic `pi@fire.walla`; never hardcode a real box
 hostname, IP, or key path.
 
 When running the CLI live against a real box for verification, prefer commands
@@ -51,5 +51,7 @@ pasting raw `devices` / `dns` output anywhere it will be committed or shared.
 ## Commands
 
 - `go test ./...` — run everything.
-- `go test ./internal/render -update` — regenerate golden files.
+- `go test ./internal/render -update` — regenerate render golden files.
+- `go test ./internal/tui -update` — regenerate TUI view snapshots (rendered
+  with plain styles, ANSI stripped, so they're deterministic).
 - `make build` / `make test` / `make lint`.

@@ -5,11 +5,14 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/stefanpenner/fire.cli/internal/config"
 	"github.com/stefanpenner/fire.cli/internal/firewalla"
+	"github.com/stefanpenner/fire.cli/internal/picker"
 	"github.com/stefanpenner/fire.cli/internal/render"
 	"github.com/stefanpenner/fire.cli/internal/transport"
 )
@@ -21,6 +24,21 @@ type Client interface {
 	ListDevices(ctx context.Context) ([]firewalla.Device, error)
 	DNSByDevice(ctx context.Context, mac string, limit int) ([]firewalla.DNSQuery, error)
 	WhoResolved(ctx context.Context, domain string) ([]firewalla.Resolver, error)
+	ListNetworks(ctx context.Context) ([]firewalla.Network, error)
+	ListRules(ctx context.Context) ([]firewalla.Rule, error)
+	ListWANs(ctx context.Context) ([]firewalla.WAN, error)
+	DataUsage(ctx context.Context) (firewalla.DataUsageReport, error)
+	Traffic(ctx context.Context, mac string) ([]firewalla.Peer, error)
+	TopTalkers(ctx context.Context) ([]firewalla.TopTalker, error)
+	ListAlarms(ctx context.Context, limit int) ([]firewalla.Alarm, error)
+	ListFeatures(ctx context.Context) ([]firewalla.Feature, error)
+	CreateRule(ctx context.Context, spec firewalla.RuleSpec) (string, error)
+	DeleteMatching(ctx context.Context, spec firewalla.RuleSpec) (int, error)
+	DeleteRule(ctx context.Context, id string) error
+	SetRuleDisabled(ctx context.Context, id string, disabled bool) error
+	SetFeature(ctx context.Context, key string, enabled bool) error
+	ArchiveAlarm(ctx context.Context, id string) error
+	DeleteAlarm(ctx context.Context, id string) error
 	Raw(ctx context.Context, args string) (string, error)
 }
 
@@ -32,8 +50,14 @@ type App struct {
 
 	// persistent flags
 	Host    string
+	Box     string
 	JSON    bool
 	NoColor bool
+	Timeout time.Duration
+
+	// ConfigPath overrides the config file location (tests set this for
+	// isolation; empty means config.DefaultPath()).
+	ConfigPath string
 }
 
 func (a *App) now() time.Time {
@@ -62,31 +86,85 @@ func NewRootCmd(app *App) *cobra.Command {
 		SilenceUsage:      true,
 		SilenceErrors:     true,
 		Version:           Version,
-		PersistentPreRunE: app.connect,
+		PersistentPreRunE: app.setup,
+		// Bare `fire` in a terminal launches the interactive dashboard;
+		// piped/redirected, it falls back to printing help.
+		RunE: func(c *cobra.Command, _ []string) error {
+			if picker.Interactive(app.Out) {
+				return app.runTUI(0) // bare `fire`: dashboard, live mode off (toggle with f)
+			}
+			return c.Help()
+		},
 	}
 	root.SetOut(app.Out)
 	root.SetErr(app.Err)
 
 	pf := root.PersistentFlags()
-	pf.StringVar(&app.Host, "host", "pi@fire", "ssh destination of the Firewalla box")
+	pf.StringVar(&app.Host, "host", "pi@fire.walla", "ssh destination of the Firewalla box")
+	pf.StringVar(&app.Box, "box", "", "named box from the config file (see --config)")
+	pf.StringVar(&app.ConfigPath, "config", app.ConfigPath, "config file path (default ~/.config/fire/config.json)")
 	pf.BoolVar(&app.JSON, "json", false, "output JSON instead of a table")
 	pf.BoolVar(&app.NoColor, "no-color", false, "disable colored output")
+	pf.DurationVar(&app.Timeout, "timeout", 30*time.Second, "abort a remote command if it runs longer than this (0 = no limit)")
 
 	root.AddCommand(
 		newVersionCmd(app),
 		newDevicesCmd(app),
 		newDNSCmd(app),
+		newNetworksCmd(app),
+		newRulesCmd(app),
+		newWANCmd(app),
+		newDataCmd(app),
+		newTrafficCmd(app),
+		newTopCmd(app),
+		newAlarmsCmd(app),
+		newFeaturesCmd(app),
+		newBlockCmd(app),
+		newUnblockCmd(app),
+		newPauseCmd(app),
+		newResumeCmd(app),
 		newStatusCmd(app),
 		newRedisCmd(app),
+		newTUICmd(app),
 	)
 	return root
+}
+
+// setup loads the config file, applies it under the CLI flags (an explicit flag
+// always wins), then connects. Runs before every command.
+func (a *App) setup(cmd *cobra.Command, args []string) error {
+	path := a.ConfigPath
+	if path == "" {
+		path = config.DefaultPath()
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		fmt.Fprintf(a.Err, "warning: %v; using defaults\n", err)
+		cfg = config.Config{}
+	}
+
+	fl := cmd.Flags()
+	if !fl.Changed("host") {
+		host, herr := cfg.ResolveHost(a.Box, a.Host)
+		if herr != nil {
+			return herr
+		}
+		a.Host = host
+	}
+	if !fl.Changed("timeout") {
+		a.Timeout = cfg.TimeoutOr(a.Timeout)
+	}
+	if !fl.Changed("no-color") && cfg.NoColor {
+		a.NoColor = true
+	}
+	return a.connect(cmd, args)
 }
 
 // connect lazily builds a real SSH-backed client when one was not injected
 // (tests inject a fake, so this is a no-op there).
 func (a *App) connect(_ *cobra.Command, _ []string) error {
 	if a.Client == nil {
-		a.Client = firewalla.New(transport.NewSSH(a.Host))
+		a.Client = firewalla.New(transport.NewSSH(a.Host, transport.WithTimeout(a.Timeout)))
 	}
 	return nil
 }

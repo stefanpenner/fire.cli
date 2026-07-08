@@ -1,0 +1,55 @@
+@@RULE@@ policy:1
+pid
+1
+action
+block
+type
+dns
+target
+ads.example.net
+direction
+bidirection
+timestamp
+1700000300.5
+notes
+Block ads
+hitCount
+4210
+lastHitTs
+1700000999.0
+@@RULE@@ policy:2
+pid
+2
+type
+category
+target
+games
+direction
+outbound
+tag
+["intf:adf9e2ed-d9f6-40f3-81cc-4da924d9f15d"]
+timestamp
+1700000900.0
+disabled
+1
+hitCount
+0
+@@RULE@@ policy:3
+pid
+3
+action
+allow
+type
+net
+target
+203.0.113.0/24
+direction
+inbound
+timestamp
+1700000600.0
+notes
+tailscale access to lan
+hitCount
+301686
+lastHitTs
+1700009999.0

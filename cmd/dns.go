@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -39,12 +40,18 @@ func newDNSWhoCmd(app *App) *cobra.Command {
 func newDNSDeviceCmd(app *App) *cobra.Command {
 	var limit int
 	cmd := &cobra.Command{
-		Use:     "device <mac>",
-		Aliases: []string{"dev"},
-		Short:   "Show recent DNS lookups made by a device",
-		Args:    cobra.ExactArgs(1),
+		Use:               "device <device>",
+		Aliases:           []string{"dev"},
+		Short:             "Show recent DNS lookups made by a device (by name, IP, or MAC)",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: app.completeDevice,
 		RunE: func(c *cobra.Command, args []string) error {
-			queries, err := app.Client.DNSByDevice(c.Context(), args[0], limit)
+			idx := loadDevices(c.Context(), app)
+			mac := idx.resolveMAC(args[0])
+			if mac == "" {
+				return fmt.Errorf("no device matches %q; run `fire devices` to list devices (name, IP, or MAC all work)", args[0])
+			}
+			queries, err := app.Client.DNSByDevice(c.Context(), mac, limit)
 			if err != nil {
 				return err
 			}

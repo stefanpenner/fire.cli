@@ -1,0 +1,23 @@
+╭───────────────────────────────────────────────────────────────────────────╮
+│ Keyboard Shortcuts                                                        │
+│                                                                           │
+│   ↑/k, ↓/j        Move selection                                          │
+│   g / G           Jump to top / bottom                                    │
+│   tab / ⇧tab      Next / previous view                                    │
+│   h/l, ←/→        Previous / next view                                    │
+│   1–6             Jump to a view (devices…data)                           │
+│   enter           Open detail for the selected item                       │
+│   /               Search / filter the current list                        │
+│   s               Cycle sort (default ↔ by name)                          │
+│   o               Toggle online-only filter (devices)                     │
+│   b               Block selected device                                   │
+│   u               Unblock selected device                                 │
+│   R/A/N/W/D       Jump to rules/alarms/networks/wan/data                  │
+│   e/d/x           Enable/disable/delete (rules) • archive/delete (alarms) │
+│   r               Reload list                                             │
+│   f               Toggle live auto-refresh                                │
+│   ?               Toggle this help                                        │
+│   q / ctrl+c      Quit                                                    │
+│                                                                           │
+│ ? or esc to close                                                         │
+╰───────────────────────────────────────────────────────────────────────────╯

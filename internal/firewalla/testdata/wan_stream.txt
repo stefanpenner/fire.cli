@@ -1,0 +1,11 @@
+@@ROUTING@@
+{"routing":{"global":{"default":{"viaIntf":"eth0","viaIntf2":"eth3","type":"primary_standby","failback":true}}}}
+@@CONN@@
+{"connected":true,"wans":{"eth0":{"active":true,"carrier":true,"ping":true,"dns":true,"wanConnState":{"ready":true,"active":true}},"eth3":{"active":true,"carrier":true,"ping":false,"dns":false,"wanConnState":{"ready":true,"active":false}}}}
+@@NET@@
+eth0
+{"name":"eth0","desc":"ISP-A","uuid":"338ef2cb-35d6-4ebe-b643-04174b23f27b","subnet":"203.0.113.0/24","type":"wan"}
+eth3
+{"name":"eth3","desc":"ISP-B","uuid":"60bbef6a-80be-499b-b131-639f6cf249ac","subnet":"198.51.100.0/24","type":"wan"}
+br0
+{"name":"br0","desc":"Home","uuid":"adf9e2ed","subnet":"192.0.2.0/24","type":"lan"}

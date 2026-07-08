@@ -1,0 +1,2 @@
+go test fuzz v1
+string("@@DL@@\n\x1b[31mkey\x1b[0m\nva\x01\x02l\n\x00mid\n1024")

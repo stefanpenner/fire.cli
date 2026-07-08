@@ -1,0 +1,6 @@
+🔥 fire  rules (2)
+ devices │ rules │ alarms │ networks │ wan │ data 
+
+❯ on  10     block  dns       ads.example.net               
+  off 11     allow  mac       AA:BB:CC:DD:EE:01             
+ NORMAL  ↑↓ nav • enter detail • / search • s sort • e/d/x en/dis/del • tab views • r reload • esc devices • q quit

@@ -1,0 +1,14 @@
+@@DL@@
+{"device":"AA:BB:CC:DD:EE:01","domain":"video.example.com","port":["443"],"fd":"in","destIP":"203.0.113.5"}
+409600
+{"device":"AA:BB:CC:DD:EE:01","domain":"api.example.net","port":["443"],"fd":"in","destIP":"203.0.113.9"}
+8192
+@@UL@@
+{"device":"AA:BB:CC:DD:EE:01","domain":"video.example.com","port":["443"],"fd":"out","destIP":"203.0.113.5"}
+2048
+@@LDL@@
+{"device":"AA:BB:CC:DD:EE:01","port":["445"],"fd":"in","dstMac":"AA:BB:CC:DD:EE:02"}
+1024
+@@LUL@@
+{"device":"AA:BB:CC:DD:EE:01","port":["445"],"fd":"out","dstMac":"AA:BB:CC:DD:EE:02"}
+512
