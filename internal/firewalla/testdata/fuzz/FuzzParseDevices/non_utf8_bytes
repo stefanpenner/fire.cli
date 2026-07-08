@@ -1,0 +1,2 @@
+go test fuzz v1
+string("@@DEVICE@@ host:mac:AA:BB:CC:DD:EE:01\nname\n\xff\xfe\xfd\xfc")

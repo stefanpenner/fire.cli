@@ -1,0 +1,2 @@
+go test fuzz v1
+string("@@DL@@\n\xff\xfe\xfd\xfc\n1024")
