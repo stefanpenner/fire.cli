@@ -6,7 +6,7 @@
 │   tab / ⇧tab      Next / previous view                                    │
 │   h/l, ←/→        Previous / next view                                    │
 │   1–6             Jump to a view (devices…data)                           │
-│   enter           Device detail (traffic)                                 │
+│   enter           Open detail for the selected item                       │
 │   /               Search devices (name, IP, MAC)                          │
 │   o               Toggle online-only filter                               │
 │   b               Block selected device                                   │

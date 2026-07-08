@@ -76,22 +76,22 @@ func (k KeyMap) DataHelp() string {
 
 // NetworksHelp is the one-line footer help shown in the networks view.
 func (k KeyMap) NetworksHelp() string {
-	return "↑↓ nav • tab views • r reload • esc devices • q quit"
+	return "↑↓ nav • enter detail • tab views • r reload • esc devices • q quit"
 }
 
 // WANHelp is the one-line footer help shown in the WAN view.
 func (k KeyMap) WANHelp() string {
-	return "↑↓ nav • tab views • r reload • esc devices • q quit"
+	return "↑↓ nav • enter detail • tab views • r reload • esc devices • q quit"
 }
 
 // RulesHelp is the one-line footer help shown in the rules view.
 func (k KeyMap) RulesHelp() string {
-	return "↑↓ nav • e enable • d disable • x delete • tab views • r reload • esc devices • q quit"
+	return "↑↓ nav • enter detail • e enable • d disable • x delete • tab views • r reload • esc devices • q quit"
 }
 
 // AlarmsHelp is the one-line footer help shown in the alarms view.
 func (k KeyMap) AlarmsHelp() string {
-	return "↑↓ nav • a archive • x delete • tab views • r reload • esc devices • q quit"
+	return "↑↓ nav • enter detail • a archive • x delete • tab views • r reload • esc devices • q quit"
 }
 
 // ShortHelp is the one-line footer help for normal mode.
@@ -112,7 +112,7 @@ func (k KeyMap) FullHelp() [][2]string {
 		{"tab / ⇧tab", "Next / previous view"},
 		{"h/l, ←/→", "Previous / next view"},
 		{"1–6", "Jump to a view (devices…data)"},
-		{"enter", "Device detail (traffic)"},
+		{"enter", "Open detail for the selected item"},
 		{"/", "Search devices (name, IP, MAC)"},
 		{"o", "Toggle online-only filter"},
 		{"b", "Block selected device"},

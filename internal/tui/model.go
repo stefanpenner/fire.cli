@@ -154,14 +154,19 @@ type Model struct {
 	err      error
 }
 
-// detailState backs the per-device detail pane (its top traffic peers and the
-// rules targeting it).
+// detailState backs the detail pane opened with enter in any list view. Every
+// item shows a title + label/value fields; a device additionally loads its top
+// traffic peers and the rules targeting it (the async extras).
 type detailState struct {
-	device  firewalla.Device
-	peers   []firewalla.Peer
-	rules   []firewalla.Rule
-	loading bool
-	err     error
+	title  string
+	fields [][2]string
+
+	isDevice bool
+	device   firewalla.Device
+	peers    []firewalla.Peer
+	rules    []firewalla.Rule
+	loading  bool
+	err      error
 }
 
 // pendingAction is a destructive action staged for confirmation, mirroring the
@@ -394,14 +399,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.confirmKey(msg)
 	}
 
-	// Detail pane: esc/q/enter closes; block/unblock still work on its device.
+	// Detail pane: esc/q/enter closes. block/unblock still work, but only on a
+	// device detail (they are meaningless for a rule/alarm/network/wan).
 	if m.detail != nil {
 		switch {
 		case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.Enter):
 			m.detail = nil
-		case key.Matches(msg, m.keys.Block):
+		case m.detail.isDevice && key.Matches(msg, m.keys.Block):
 			m.stageAction(true)
-		case key.Matches(msg, m.keys.Unblock):
+		case m.detail.isDevice && key.Matches(msg, m.keys.Unblock):
 			m.stageAction(false)
 		}
 		return m, nil
@@ -513,7 +519,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.loadCmd()
 	case key.Matches(msg, m.keys.Enter):
 		if d, ok := m.SelectedDevice(); ok {
-			m.detail = &detailState{device: d, loading: true}
+			m.detail = &detailState{isDevice: true, device: d, title: deviceLabel(d), loading: true}
 			m.status = ""
 			return m, m.detailCmd(d)
 		}
@@ -620,6 +626,10 @@ func (m Model) handleRuleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Reload):
 		m.rulesLoading, m.status, m.err = true, "", nil
 		return m, m.loadRulesCmd()
+	case key.Matches(msg, m.keys.Enter):
+		if r, ok := m.selectedRule(); ok {
+			return m.openDetail("rule "+r.ID, ruleFields(r, m.now()))
+		}
 	case key.Matches(msg, m.keys.RuleEnable):
 		m.stageRule("enable")
 	case key.Matches(msg, m.keys.RuleDisable):
@@ -627,6 +637,14 @@ func (m Model) handleRuleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.RuleDelete):
 		m.stageRule("delete")
 	}
+	return m, nil
+}
+
+// openDetail stages a non-device detail pane (a label/value field list) for the
+// selected item. Returns m unchanged so it composes in the key switches.
+func (m Model) openDetail(title string, fields [][2]string) (tea.Model, tea.Cmd) {
+	m.status = ""
+	m.detail = &detailState{title: title, fields: fields}
 	return m, nil
 }
 
@@ -716,6 +734,10 @@ func (m Model) handleAlarmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Reload):
 		m.alarmsLoading, m.status, m.err = true, "", nil
 		return m, m.loadAlarmsCmd()
+	case key.Matches(msg, m.keys.Enter):
+		if a, ok := m.selectedAlarm(); ok {
+			return m.openDetail("alarm "+a.ID, alarmFields(a, m.now()))
+		}
 	case key.Matches(msg, m.keys.AlarmArchive):
 		m.stageAlarm("archive")
 	case key.Matches(msg, m.keys.RuleDelete): // 'x' deletes in any list view
@@ -796,6 +818,11 @@ func (m Model) handleNetworkKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Reload):
 		m.networksLoading, m.status, m.err = true, "", nil
 		return m, m.loadNetworksCmd()
+	case key.Matches(msg, m.keys.Enter):
+		if m.networkCursor >= 0 && m.networkCursor < len(m.networks) {
+			n := m.networks[m.networkCursor]
+			return m.openDetail("network "+n.Name, networkFields(n))
+		}
 	}
 	return m, nil
 }
@@ -827,6 +854,11 @@ func (m Model) handleWanKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Reload):
 		m.wansLoading, m.status, m.err = true, "", nil
 		return m, m.loadWansCmd()
+	case key.Matches(msg, m.keys.Enter):
+		if m.wanCursor >= 0 && m.wanCursor < len(m.wans) {
+			w := m.wans[m.wanCursor]
+			return m.openDetail("wan "+w.Name, m.wanFields(w))
+		}
 	}
 	return m, nil
 }

@@ -208,8 +208,12 @@ func (m Model) footerView() string {
 	return m.viewFooter(m.keys.ShortHelp())
 }
 
-// detailView renders the per-device pane: identity, status, and top peers.
+// detailView renders the pane opened with enter. Non-device items show a
+// generic label/value field list; a device adds its live traffic + rules.
 func (m Model) detailView() string {
+	if !m.detail.isDevice {
+		return m.fieldsDetailView()
+	}
 	d := m.detail.device
 	now := m.now()
 	status := "offline"
@@ -282,6 +286,103 @@ func (m Model) detailView() string {
 	b.WriteString("\n")
 	b.WriteString(m.viewFooter("b block • u unblock • esc back • q close"))
 	return b.String()
+}
+
+// fieldsDetailView renders the generic label/value detail pane used by every
+// non-device item (rules, alarms, networks, wan).
+func (m Model) fieldsDetailView() string {
+	var b strings.Builder
+	b.WriteString(m.styles.TitleBadge.Render("🔥 fire"))
+	b.WriteString(m.styles.Subtle.Render("  " + m.detail.title))
+	b.WriteString("\n\n")
+	for _, f := range m.detail.fields {
+		v := f[1]
+		if v == "" {
+			v = "—"
+		}
+		fmt.Fprintf(&b, "  %s %s\n", m.styles.Subtle.Render(fmt.Sprintf("%-11s", f[0])), v)
+	}
+	b.WriteString("\n")
+	b.WriteString(m.viewFooter("esc back • q close"))
+	return b.String()
+}
+
+// ruleFields is the full field list for a rule's detail pane.
+func ruleFields(r firewalla.Rule, now time.Time) [][2]string {
+	state := "enabled"
+	if r.Disabled {
+		state = "disabled"
+	}
+	return [][2]string{
+		{"id", r.ID},
+		{"action", r.Action},
+		{"type", r.Type},
+		{"target", r.Target},
+		{"direction", r.Direction},
+		{"scope", r.Scope},
+		{"state", state},
+		{"hits", fmt.Sprintf("%d", r.HitCount)},
+		{"last hit", lastSeen(r.LastHit, now)},
+		{"created", lastSeen(r.Created, now)},
+		{"notes", r.Notes},
+	}
+}
+
+// alarmFields is the full field list for an alarm's detail pane.
+func alarmFields(a firewalla.Alarm, now time.Time) [][2]string {
+	return [][2]string{
+		{"id", a.ID},
+		{"type", a.Type},
+		{"when", lastSeen(a.Time, now)},
+		{"device", a.Device},
+		{"mac", a.MAC},
+		{"state", a.State},
+		{"message", a.Message},
+	}
+}
+
+// networkFields is the full field list for a network's detail pane.
+func networkFields(n firewalla.Network) [][2]string {
+	vlan := "—"
+	if n.VLANID > 0 {
+		vlan = fmt.Sprintf("%d", n.VLANID)
+	}
+	return [][2]string{
+		{"name", n.Name},
+		{"type", n.Type},
+		{"interface", n.Interface},
+		{"parent", n.Parent},
+		{"vlan", vlan},
+		{"conn", n.ConnType},
+		{"subnet", n.Subnet},
+		{"gateway", n.Gateway},
+		{"dns", strings.Join(n.DNS, ", ")},
+		{"uuid", n.UUID},
+	}
+}
+
+// wanFields is the full field list for a WAN uplink's detail pane. A method
+// because the health label is derived via wanHealth.
+func (m Model) wanFields(w firewalla.WAN) [][2]string {
+	health, _ := m.wanHealth(w)
+	yesno := func(b bool) string {
+		if b {
+			return "yes"
+		}
+		return "no"
+	}
+	return [][2]string{
+		{"name", w.Name},
+		{"interface", w.Interface},
+		{"role", w.Role},
+		{"mode", w.Mode},
+		{"active", yesno(w.Active)},
+		{"health", health},
+		{"carrier", yesno(w.Carrier)},
+		{"ping", yesno(w.Ping)},
+		{"dns", yesno(w.DNS)},
+		{"uuid", w.UUID},
+	}
 }
 
 // rulesView renders the firewall-rules list.
