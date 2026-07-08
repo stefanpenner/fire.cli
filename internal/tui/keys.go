@@ -9,6 +9,7 @@ type KeyMap struct {
 	GoTop      key.Binding
 	GoBot      key.Binding
 	Search     key.Binding
+	Sort       key.Binding
 	OnlineOnly key.Binding
 	Block      key.Binding
 	Unblock    key.Binding
@@ -44,6 +45,7 @@ func DefaultKeyMap() KeyMap {
 		GoTop:      key.NewBinding(key.WithKeys("g", "home"), key.WithHelp("g", "top")),
 		GoBot:      key.NewBinding(key.WithKeys("G", "end"), key.WithHelp("G", "bottom")),
 		Search:     key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
+		Sort:       key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort")),
 		OnlineOnly: key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "online only")),
 		Block:      key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "block")),
 		Unblock:    key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "unblock")),
@@ -76,27 +78,27 @@ func (k KeyMap) DataHelp() string {
 
 // NetworksHelp is the one-line footer help shown in the networks view.
 func (k KeyMap) NetworksHelp() string {
-	return "↑↓ nav • enter detail • tab views • r reload • esc devices • q quit"
+	return "↑↓ nav • enter detail • / search • s sort • tab views • r reload • esc devices • q quit"
 }
 
 // WANHelp is the one-line footer help shown in the WAN view.
 func (k KeyMap) WANHelp() string {
-	return "↑↓ nav • enter detail • tab views • r reload • esc devices • q quit"
+	return "↑↓ nav • enter detail • / search • s sort • tab views • r reload • esc devices • q quit"
 }
 
 // RulesHelp is the one-line footer help shown in the rules view.
 func (k KeyMap) RulesHelp() string {
-	return "↑↓ nav • enter detail • e enable • d disable • x delete • tab views • r reload • esc devices • q quit"
+	return "↑↓ nav • enter detail • / search • s sort • e/d/x en/dis/del • tab views • r reload • esc devices • q quit"
 }
 
 // AlarmsHelp is the one-line footer help shown in the alarms view.
 func (k KeyMap) AlarmsHelp() string {
-	return "↑↓ nav • enter detail • a archive • x delete • tab views • r reload • esc devices • q quit"
+	return "↑↓ nav • enter detail • / search • s sort • a archive • x delete • tab views • r reload • esc devices • q quit"
 }
 
 // ShortHelp is the one-line footer help for normal mode.
 func (k KeyMap) ShortHelp() string {
-	return "↑↓ nav • tab/→ views • enter detail • / search • o online • b block • u unblock • ? help • q quit"
+	return "↑↓ nav • tab/→ views • enter detail • / search • s sort • o online • b block • u unblock • ? help • q quit"
 }
 
 // SearchHelp is the footer help shown while typing a search.
@@ -113,8 +115,9 @@ func (k KeyMap) FullHelp() [][2]string {
 		{"h/l, ←/→", "Previous / next view"},
 		{"1–6", "Jump to a view (devices…data)"},
 		{"enter", "Open detail for the selected item"},
-		{"/", "Search devices (name, IP, MAC)"},
-		{"o", "Toggle online-only filter"},
+		{"/", "Search / filter the current list"},
+		{"s", "Cycle sort (default ↔ by name)"},
+		{"o", "Toggle online-only filter (devices)"},
 		{"b", "Block selected device"},
 		{"u", "Unblock selected device"},
 		{"R/A/N/W/D", "Jump to rules/alarms/networks/wan/data"},

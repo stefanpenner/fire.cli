@@ -385,6 +385,33 @@ func (m Model) wanFields(w firewalla.WAN) [][2]string {
 	}
 }
 
+// listBody renders the windowed rows for the active list view from the shared
+// visible/cursor; row renders the underlying item at index idx.
+func (m Model) listBody(reserve int, row func(idx int, selected bool) string) string {
+	maxRows := m.height - reserve
+	if maxRows < 1 {
+		maxRows = 1
+	}
+	start := 0
+	if m.cursor >= maxRows {
+		start = m.cursor - maxRows + 1
+	}
+	end := min(start+maxRows, len(m.visible))
+	rows := make([]string, 0, end-start)
+	for i := start; i < end; i++ {
+		rows = append(rows, row(m.visible[i], i == m.cursor))
+	}
+	return strings.Join(rows, "\n")
+}
+
+// searchLine renders the live filter input when searching.
+func (m Model) searchLine() string {
+	if m.searching {
+		return "\n" + m.search.View()
+	}
+	return ""
+}
+
 // rulesView renders the firewall-rules list.
 func (m Model) rulesView() string {
 	var b strings.Builder
@@ -398,23 +425,13 @@ func (m Model) rulesView() string {
 		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
 	case len(m.rules) == 0:
 		b.WriteString(m.styles.Subtle.Render("  no rules"))
+	case len(m.visible) == 0:
+		b.WriteString(m.styles.Subtle.Render("  no rules match the filter"))
 	default:
-		maxRows := m.height - 4
-		if maxRows < 1 {
-			maxRows = 1
-		}
-		start := 0
-		if m.ruleCursor >= maxRows {
-			start = m.ruleCursor - maxRows + 1
-		}
-		end := min(start+maxRows, len(m.rules))
-		rows := make([]string, 0, end-start)
-		for i := start; i < end; i++ {
-			rows = append(rows, m.ruleRow(m.rules[i], i == m.ruleCursor))
-		}
-		b.WriteString(strings.Join(rows, "\n"))
+		b.WriteString(m.listBody(4, func(i int, sel bool) string { return m.ruleRow(m.rules[i], sel) }))
 	}
 
+	b.WriteString(m.searchLine())
 	b.WriteString("\n")
 	b.WriteString(m.viewFooter(m.keys.RulesHelp()))
 	return b.String()
@@ -450,23 +467,13 @@ func (m Model) alarmsView() string {
 		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
 	case len(m.alarms) == 0:
 		b.WriteString(m.styles.Subtle.Render("  no alarms"))
+	case len(m.visible) == 0:
+		b.WriteString(m.styles.Subtle.Render("  no alarms match the filter"))
 	default:
-		maxRows := m.height - 4
-		if maxRows < 1 {
-			maxRows = 1
-		}
-		start := 0
-		if m.alarmCursor >= maxRows {
-			start = m.alarmCursor - maxRows + 1
-		}
-		end := min(start+maxRows, len(m.alarms))
-		rows := make([]string, 0, end-start)
-		for i := start; i < end; i++ {
-			rows = append(rows, m.alarmRow(m.alarms[i], i == m.alarmCursor, now))
-		}
-		b.WriteString(strings.Join(rows, "\n"))
+		b.WriteString(m.listBody(4, func(i int, sel bool) string { return m.alarmRow(m.alarms[i], sel, now) }))
 	}
 
+	b.WriteString(m.searchLine())
 	b.WriteString("\n")
 	b.WriteString(m.viewFooter(m.keys.AlarmsHelp()))
 	return b.String()
@@ -509,23 +516,13 @@ func (m Model) networksView() string {
 		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
 	case len(m.networks) == 0:
 		b.WriteString(m.styles.Subtle.Render("  no networks"))
+	case len(m.visible) == 0:
+		b.WriteString(m.styles.Subtle.Render("  no networks match the filter"))
 	default:
-		maxRows := m.height - 5
-		if maxRows < 1 {
-			maxRows = 1
-		}
-		start := 0
-		if m.networkCursor >= maxRows {
-			start = m.networkCursor - maxRows + 1
-		}
-		end := min(start+maxRows, len(m.networks))
-		rows := make([]string, 0, end-start)
-		for i := start; i < end; i++ {
-			rows = append(rows, m.networkRow(m.networks[i], i == m.networkCursor))
-		}
-		b.WriteString(strings.Join(rows, "\n"))
+		b.WriteString(m.listBody(5, func(i int, sel bool) string { return m.networkRow(m.networks[i], sel) }))
 	}
 
+	b.WriteString(m.searchLine())
 	b.WriteString("\n")
 	b.WriteString(m.viewFooter(m.keys.NetworksHelp()))
 	return b.String()
@@ -557,23 +554,13 @@ func (m Model) wansView() string {
 		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
 	case len(m.wans) == 0:
 		b.WriteString(m.styles.Subtle.Render("  no uplinks"))
+	case len(m.visible) == 0:
+		b.WriteString(m.styles.Subtle.Render("  no uplinks match the filter"))
 	default:
-		maxRows := m.height - 5
-		if maxRows < 1 {
-			maxRows = 1
-		}
-		start := 0
-		if m.wanCursor >= maxRows {
-			start = m.wanCursor - maxRows + 1
-		}
-		end := min(start+maxRows, len(m.wans))
-		rows := make([]string, 0, end-start)
-		for i := start; i < end; i++ {
-			rows = append(rows, m.wanRow(m.wans[i], i == m.wanCursor))
-		}
-		b.WriteString(strings.Join(rows, "\n"))
+		b.WriteString(m.listBody(5, func(i int, sel bool) string { return m.wanRow(m.wans[i], sel) }))
 	}
 
+	b.WriteString(m.searchLine())
 	b.WriteString("\n")
 	b.WriteString(m.viewFooter(m.keys.WANHelp()))
 	return b.String()

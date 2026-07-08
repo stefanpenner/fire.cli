@@ -7,8 +7,9 @@
 │   h/l, ←/→        Previous / next view                                    │
 │   1–6             Jump to a view (devices…data)                           │
 │   enter           Open detail for the selected item                       │
-│   /               Search devices (name, IP, MAC)                          │
-│   o               Toggle online-only filter                               │
+│   /               Search / filter the current list                        │
+│   s               Cycle sort (default ↔ by name)                          │
+│   o               Toggle online-only filter (devices)                     │
 │   b               Block selected device                                   │
 │   u               Unblock selected device                                 │
 │   R/A/N/W/D       Jump to rules/alarms/networks/wan/data                  │

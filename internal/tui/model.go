@@ -52,6 +52,24 @@ const (
 	dataView
 )
 
+// sortMode selects a view's ordering. 0 is always the view's natural order
+// (as loaded); higher values are alternate orderings interpreted per view.
+type sortMode int
+
+const (
+	sortNatural sortMode = iota
+	sortByLabel          // alphabetical by the row's primary label
+	numSortModes
+)
+
+// sortLabel names the active sort for the footer.
+func (s sortMode) label() string {
+	if s == sortByLabel {
+		return "name"
+	}
+	return "default"
+}
+
 // devicesMsg carries the result of a device (re)load.
 type devicesMsg struct {
 	devices []firewalla.Device
@@ -117,25 +135,26 @@ type Model struct {
 
 	view viewMode // which list is showing
 
-	devices    []firewalla.Device // sorted: online first, then most-recent
-	visible    []int              // indices into devices after the active filter
-	cursor     int                // index into visible
-	onlineOnly bool               // when set, hide offline devices
+	// visible holds the indices of the ACTIVE view's underlying slice after the
+	// current search filter + sort; cursor indexes into visible. Every list view
+	// shares this so search (/) and sort (s) work identically everywhere.
+	visible    []int
+	cursor     int
+	onlineOnly bool                   // devices: hide offline
+	sortMode   [dataView + 1]sortMode // per-view sort selection
+
+	devices []firewalla.Device // pre-sorted: online first, then most-recent
 
 	rules        []firewalla.Rule
-	ruleCursor   int
 	rulesLoading bool
 
 	alarms        []firewalla.Alarm
-	alarmCursor   int
 	alarmsLoading bool
 
 	networks        []firewalla.Network
-	networkCursor   int
 	networksLoading bool
 
 	wans        []firewalla.WAN
-	wanCursor   int
 	wansLoading bool
 
 	data        firewalla.DataUsageReport
@@ -257,6 +276,14 @@ func (m Model) loadingTick() tea.Cmd {
 func (m Model) switchTo(v viewMode) (tea.Model, tea.Cmd) {
 	m.view = v
 	m.status, m.err = "", nil
+	// Start each view fresh: no carried-over search query or cursor, and rebuild
+	// visible from any cached data so it renders correctly before the background
+	// reload lands.
+	m.searching = false
+	m.search.SetValue("")
+	m.search.Blur()
+	m.cursor = 0
+	m.refilter()
 	fresh := !m.loaded[v] // spinner only on the very first load of a view
 	var cmd tea.Cmd
 	switch v {
@@ -325,7 +352,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.loaded[ruleView] = true
 			m.rules = msg.rules
-			m.ruleCursor = clampIndex(m.ruleCursor, len(m.rules))
+			m.refilter()
 		}
 		return m, nil
 
@@ -338,7 +365,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.loaded[alarmView] = true
 			m.alarms = msg.alarms
-			m.alarmCursor = clampIndex(m.alarmCursor, len(m.alarms))
+			m.refilter()
 		}
 		return m, nil
 
@@ -351,7 +378,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.loaded[networkView] = true
 			m.networks = msg.networks
-			m.networkCursor = clampIndex(m.networkCursor, len(m.networks))
+			m.refilter()
 		}
 		return m, nil
 
@@ -364,7 +391,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.loaded[wanView] = true
 			m.wans = msg.wans
-			m.wanCursor = clampIndex(m.wanCursor, len(m.wans))
+			m.refilter()
 		}
 		return m, nil
 
@@ -519,49 +546,128 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.switchTo(dataView)
 	}
 
-	switch m.view {
-	case ruleView:
-		return m.handleRuleKey(msg)
-	case alarmView:
-		return m.handleAlarmKey(msg)
-	case networkView:
-		return m.handleNetworkKey(msg)
-	case wanView:
-		return m.handleWanKey(msg)
-	case dataView:
-		return m.handleDataKey(msg)
+	// dataView is a summary, not a scrollable list: only reload/esc apply.
+	if m.view == dataView {
+		switch {
+		case key.Matches(msg, m.keys.Cancel):
+			m.view = deviceView
+			m.refilter()
+		case key.Matches(msg, m.keys.Reload):
+			return m.reloadCurrent()
+		}
+		return m, nil
 	}
 
+	// Navigation, search, sort, reload, and detail are shared by every list
+	// view so they behave identically everywhere.
 	switch {
+	case key.Matches(msg, m.keys.Cancel):
+		if m.view != deviceView {
+			m.view = deviceView
+			m.refilter()
+		}
+		return m, nil
 	case key.Matches(msg, m.keys.Up):
 		m.moveCursor(-1)
+		return m, nil
 	case key.Matches(msg, m.keys.Down):
 		m.moveCursor(1)
+		return m, nil
 	case key.Matches(msg, m.keys.GoTop):
 		m.cursor = 0
+		return m, nil
 	case key.Matches(msg, m.keys.GoBot):
 		m.cursor = max(len(m.visible)-1, 0)
-	case key.Matches(msg, m.keys.OnlineOnly):
-		m.onlineOnly = !m.onlineOnly
-		m.refilter()
+		return m, nil
 	case key.Matches(msg, m.keys.Search):
 		m.searching = true
 		m.status = ""
 		m.search.Focus()
 		return m, textinput.Blink
+	case key.Matches(msg, m.keys.Sort):
+		m.sortMode[m.view] = (m.sortMode[m.view] + 1) % numSortModes
+		m.refilter()
+		return m, nil
 	case key.Matches(msg, m.keys.Reload):
-		m.loading, m.status, m.err = true, "", nil
-		return m, m.loadCmd()
+		return m.reloadCurrent()
 	case key.Matches(msg, m.keys.Enter):
+		return m.openSelectedDetail()
+	}
+
+	// View-specific keys.
+	switch m.view {
+	case ruleView:
+		return m.handleRuleKey(msg)
+	case alarmView:
+		return m.handleAlarmKey(msg)
+	case deviceView:
+		switch {
+		case key.Matches(msg, m.keys.OnlineOnly):
+			m.onlineOnly = !m.onlineOnly
+			m.refilter()
+		case key.Matches(msg, m.keys.Block):
+			m.stageAction(true)
+		case key.Matches(msg, m.keys.Unblock):
+			m.stageAction(false)
+		}
+	}
+	return m, nil
+}
+
+// reloadCurrent refetches the active view in place (keeps search + cursor),
+// showing a spinner only when there's nothing cached to display meanwhile.
+func (m Model) reloadCurrent() (tea.Model, tea.Cmd) {
+	m.status, m.err = "", nil
+	var cmd tea.Cmd
+	switch m.view {
+	case ruleView:
+		m.rulesLoading = len(m.rules) == 0
+		cmd = m.loadRulesCmd()
+	case alarmView:
+		m.alarmsLoading = len(m.alarms) == 0
+		cmd = m.loadAlarmsCmd()
+	case networkView:
+		m.networksLoading = len(m.networks) == 0
+		cmd = m.loadNetworksCmd()
+	case wanView:
+		m.wansLoading = len(m.wans) == 0
+		cmd = m.loadWansCmd()
+	case dataView:
+		m.dataLoading = m.data.PlanTotal == 0 && len(m.data.WANs) == 0
+		cmd = m.loadDataCmd()
+	default:
+		m.loading = len(m.devices) == 0
+		cmd = m.loadCmd()
+	}
+	return m, tea.Batch(cmd, m.loadingTick())
+}
+
+// openSelectedDetail opens the detail pane for the cursor item in the active
+// view. Devices load traffic asynchronously; the rest show static fields.
+func (m Model) openSelectedDetail() (tea.Model, tea.Cmd) {
+	switch m.view {
+	case deviceView:
 		if d, ok := m.SelectedDevice(); ok {
 			m.detail = &detailState{isDevice: true, device: d, title: deviceLabel(d), loading: true}
 			m.status = ""
-			return m, m.detailCmd(d)
+			return m, tea.Batch(m.detailCmd(d), m.spinner.Tick)
 		}
-	case key.Matches(msg, m.keys.Block):
-		m.stageAction(true)
-	case key.Matches(msg, m.keys.Unblock):
-		m.stageAction(false)
+	case ruleView:
+		if r, ok := m.selectedRule(); ok {
+			return m.openDetail("rule "+r.ID, ruleFields(r, m.now()))
+		}
+	case alarmView:
+		if a, ok := m.selectedAlarm(); ok {
+			return m.openDetail("alarm "+a.ID, alarmFields(a, m.now()))
+		}
+	case networkView:
+		if n, ok := m.selectedNetwork(); ok {
+			return m.openDetail("network "+n.Name, networkFields(n))
+		}
+	case wanView:
+		if w, ok := m.selectedWAN(); ok {
+			return m.openDetail("wan "+w.Name, m.wanFields(w))
+		}
 	}
 	return m, nil
 }
@@ -645,26 +751,10 @@ func (m Model) confirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // ---- rules view ----
 
-// handleRuleKey handles keys while the rules list is showing.
+// handleRuleKey handles rules-specific keys (nav/search/sort/reload/enter are
+// shared across list views; see handleListKey).
 func (m Model) handleRuleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, m.keys.Cancel):
-		m.view = deviceView
-	case key.Matches(msg, m.keys.Up):
-		m.ruleCursor = clampIndex(m.ruleCursor-1, len(m.rules))
-	case key.Matches(msg, m.keys.Down):
-		m.ruleCursor = clampIndex(m.ruleCursor+1, len(m.rules))
-	case key.Matches(msg, m.keys.GoTop):
-		m.ruleCursor = 0
-	case key.Matches(msg, m.keys.GoBot):
-		m.ruleCursor = max(len(m.rules)-1, 0)
-	case key.Matches(msg, m.keys.Reload):
-		m.rulesLoading, m.status, m.err = true, "", nil
-		return m, m.loadRulesCmd()
-	case key.Matches(msg, m.keys.Enter):
-		if r, ok := m.selectedRule(); ok {
-			return m.openDetail("rule "+r.ID, ruleFields(r, m.now()))
-		}
 	case key.Matches(msg, m.keys.RuleEnable):
 		m.stageRule("enable")
 	case key.Matches(msg, m.keys.RuleDisable):
@@ -703,12 +793,21 @@ func (m Model) loadRulesCmd() tea.Cmd {
 	}
 }
 
-// selectedRule returns the rule under the rules cursor.
-func (m Model) selectedRule() (firewalla.Rule, bool) {
-	if m.ruleCursor < 0 || m.ruleCursor >= len(m.rules) {
-		return firewalla.Rule{}, false
+// selIndex returns the underlying-slice index under the shared cursor, or
+// ok=false when the (filtered) list is empty.
+func (m Model) selIndex() (int, bool) {
+	if m.cursor < 0 || m.cursor >= len(m.visible) {
+		return 0, false
 	}
-	return m.rules[m.ruleCursor], true
+	return m.visible[m.cursor], true
+}
+
+// selectedRule returns the rule under the cursor.
+func (m Model) selectedRule() (firewalla.Rule, bool) {
+	if i, ok := m.selIndex(); ok && m.view == ruleView && i < len(m.rules) {
+		return m.rules[i], true
+	}
+	return firewalla.Rule{}, false
 }
 
 // ruleVerbs maps an action kind to its display verb and result participle.
@@ -753,26 +852,10 @@ func (m Model) ruleCmd(kind, id string) tea.Cmd {
 
 // ---- alarms view ----
 
-// handleAlarmKey handles keys while the alarms list is showing.
+// handleAlarmKey handles alarms-specific keys (nav/search/sort/reload/enter are
+// shared; see handleListKey).
 func (m Model) handleAlarmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, m.keys.Cancel):
-		m.view = deviceView
-	case key.Matches(msg, m.keys.Up):
-		m.alarmCursor = clampIndex(m.alarmCursor-1, len(m.alarms))
-	case key.Matches(msg, m.keys.Down):
-		m.alarmCursor = clampIndex(m.alarmCursor+1, len(m.alarms))
-	case key.Matches(msg, m.keys.GoTop):
-		m.alarmCursor = 0
-	case key.Matches(msg, m.keys.GoBot):
-		m.alarmCursor = max(len(m.alarms)-1, 0)
-	case key.Matches(msg, m.keys.Reload):
-		m.alarmsLoading, m.status, m.err = true, "", nil
-		return m, m.loadAlarmsCmd()
-	case key.Matches(msg, m.keys.Enter):
-		if a, ok := m.selectedAlarm(); ok {
-			return m.openDetail("alarm "+a.ID, alarmFields(a, m.now()))
-		}
 	case key.Matches(msg, m.keys.AlarmArchive):
 		m.stageAlarm("archive")
 	case key.Matches(msg, m.keys.RuleDelete): // 'x' deletes in any list view
@@ -790,12 +873,12 @@ func (m Model) loadAlarmsCmd() tea.Cmd {
 	}
 }
 
-// selectedAlarm returns the alarm under the alarms cursor.
+// selectedAlarm returns the alarm under the cursor.
 func (m Model) selectedAlarm() (firewalla.Alarm, bool) {
-	if m.alarmCursor < 0 || m.alarmCursor >= len(m.alarms) {
-		return firewalla.Alarm{}, false
+	if i, ok := m.selIndex(); ok && m.view == alarmView && i < len(m.alarms) {
+		return m.alarms[i], true
 	}
-	return m.alarms[m.alarmCursor], true
+	return firewalla.Alarm{}, false
 }
 
 // alarmVerbs maps an action kind to its display verb and result participle.
@@ -837,29 +920,12 @@ func (m Model) alarmCmd(kind, id string) tea.Cmd {
 
 // ---- networks view (read-only) ----
 
-// handleNetworkKey handles keys while the networks list is showing.
-func (m Model) handleNetworkKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, m.keys.Cancel):
-		m.view = deviceView
-	case key.Matches(msg, m.keys.Up):
-		m.networkCursor = clampIndex(m.networkCursor-1, len(m.networks))
-	case key.Matches(msg, m.keys.Down):
-		m.networkCursor = clampIndex(m.networkCursor+1, len(m.networks))
-	case key.Matches(msg, m.keys.GoTop):
-		m.networkCursor = 0
-	case key.Matches(msg, m.keys.GoBot):
-		m.networkCursor = max(len(m.networks)-1, 0)
-	case key.Matches(msg, m.keys.Reload):
-		m.networksLoading, m.status, m.err = true, "", nil
-		return m, m.loadNetworksCmd()
-	case key.Matches(msg, m.keys.Enter):
-		if m.networkCursor >= 0 && m.networkCursor < len(m.networks) {
-			n := m.networks[m.networkCursor]
-			return m.openDetail("network "+n.Name, networkFields(n))
-		}
+// selectedNetwork returns the network under the cursor.
+func (m Model) selectedNetwork() (firewalla.Network, bool) {
+	if i, ok := m.selIndex(); ok && m.view == networkView && i < len(m.networks) {
+		return m.networks[i], true
 	}
-	return m, nil
+	return firewalla.Network{}, false
 }
 
 // loadNetworksCmd fetches networks off the UI goroutine.
@@ -873,29 +939,12 @@ func (m Model) loadNetworksCmd() tea.Cmd {
 
 // ---- WAN view (read-only) ----
 
-// handleWanKey handles keys while the WAN list is showing.
-func (m Model) handleWanKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, m.keys.Cancel):
-		m.view = deviceView
-	case key.Matches(msg, m.keys.Up):
-		m.wanCursor = clampIndex(m.wanCursor-1, len(m.wans))
-	case key.Matches(msg, m.keys.Down):
-		m.wanCursor = clampIndex(m.wanCursor+1, len(m.wans))
-	case key.Matches(msg, m.keys.GoTop):
-		m.wanCursor = 0
-	case key.Matches(msg, m.keys.GoBot):
-		m.wanCursor = max(len(m.wans)-1, 0)
-	case key.Matches(msg, m.keys.Reload):
-		m.wansLoading, m.status, m.err = true, "", nil
-		return m, m.loadWansCmd()
-	case key.Matches(msg, m.keys.Enter):
-		if m.wanCursor >= 0 && m.wanCursor < len(m.wans) {
-			w := m.wans[m.wanCursor]
-			return m.openDetail("wan "+w.Name, m.wanFields(w))
-		}
+// selectedWAN returns the WAN under the cursor.
+func (m Model) selectedWAN() (firewalla.WAN, bool) {
+	if i, ok := m.selIndex(); ok && m.view == wanView && i < len(m.wans) {
+		return m.wans[i], true
 	}
-	return m, nil
+	return firewalla.WAN{}, false
 }
 
 // loadWansCmd fetches the internet uplinks off the UI goroutine.
@@ -956,19 +1005,69 @@ func (m *Model) setDevices(devs []firewalla.Device) {
 	m.refilter()
 }
 
-// refilter recomputes visible indices from the current search query and clamps
-// the cursor.
+// refilter recomputes the active view's visible indices from the current
+// search query + sort, and clamps the cursor. Shared by every list view.
 func (m *Model) refilter() {
 	q := strings.ToLower(strings.TrimSpace(m.search.Value()))
 	now := m.now()
 	m.visible = m.visible[:0]
-	for i, d := range m.devices {
-		if m.onlineOnly && !d.SeenWithin(onlineWindow, now) {
+
+	var n int
+	var text func(i int) string  // searchable text for row i (already lowercased)
+	var label func(i int) string // primary label for sortByLabel
+	switch m.view {
+	case ruleView:
+		n = len(m.rules)
+		label = func(i int) string { return m.rules[i].Target }
+		text = func(i int) string {
+			r := m.rules[i]
+			return strings.ToLower(r.ID + " " + r.Action + " " + r.Type + " " + r.Target + " " + r.Scope)
+		}
+	case alarmView:
+		n = len(m.alarms)
+		label = func(i int) string { return m.alarms[i].Type }
+		text = func(i int) string {
+			a := m.alarms[i]
+			return strings.ToLower(a.ID + " " + a.Type + " " + a.Device + " " + a.Message)
+		}
+	case networkView:
+		n = len(m.networks)
+		label = func(i int) string { return m.networks[i].Name }
+		text = func(i int) string {
+			nw := m.networks[i]
+			return strings.ToLower(nw.Name + " " + nw.Type + " " + nw.Subnet + " " + nw.Interface)
+		}
+	case wanView:
+		n = len(m.wans)
+		label = func(i int) string { return m.wans[i].Name }
+		text = func(i int) string {
+			w := m.wans[i]
+			return strings.ToLower(w.Name + " " + w.Interface + " " + w.Role)
+		}
+	case dataView:
+		n = 0 // a summary, not a list
+		label, text = func(int) string { return "" }, func(int) string { return "" }
+	default: // deviceView
+		n = len(m.devices)
+		label = func(i int) string { return deviceLabel(m.devices[i]) }
+		text = func(i int) string {
+			d := m.devices[i]
+			return strings.ToLower(d.Name + " " + d.IP + " " + d.MAC)
+		}
+	}
+
+	for i := 0; i < n; i++ {
+		if m.view == deviceView && m.onlineOnly && !m.devices[i].SeenWithin(onlineWindow, now) {
 			continue
 		}
-		if q == "" || matchesQuery(d, q) {
+		if q == "" || strings.Contains(text(i), q) {
 			m.visible = append(m.visible, i)
 		}
+	}
+	if m.sortMode[m.view] == sortByLabel {
+		sort.SliceStable(m.visible, func(a, b int) bool {
+			return strings.ToLower(label(m.visible[a])) < strings.ToLower(label(m.visible[b]))
+		})
 	}
 	if m.cursor >= len(m.visible) {
 		m.cursor = len(m.visible) - 1
@@ -998,14 +1097,6 @@ func (m Model) SelectedDevice() (firewalla.Device, bool) {
 		return firewalla.Device{}, false
 	}
 	return m.devices[m.visible[m.cursor]], true
-}
-
-// matchesQuery reports whether a device matches a lowercased query substring
-// across its name, IP, and MAC.
-func matchesQuery(d firewalla.Device, q string) bool {
-	return strings.Contains(strings.ToLower(d.Name), q) ||
-		strings.Contains(strings.ToLower(d.IP), q) ||
-		strings.Contains(strings.ToLower(d.MAC), q)
 }
 
 // deviceLabel is the friendly display name, falling back to IP then MAC.

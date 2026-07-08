@@ -330,7 +330,7 @@ func TestDetail_OpensAndLoadsTraffic(t *testing.T) {
 	require.NotNil(t, cmd)
 
 	// The detail load targets the selected device's MAC.
-	msg := cmd()
+	msg := firstMsg(cmd)
 	dm, ok := msg.(detailMsg)
 	require.True(t, ok)
 	assert.Equal(t, "AA:BB:CC:DD:EE:03", ds.gotMAC)

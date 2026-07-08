@@ -3,4 +3,4 @@
 
 ❯ ● ISP-A            eth0     primary   healthy         
     ISP-B            eth3     standby   down            
- NORMAL      ↑↓ nav • enter detail • tab views • r reload • esc devices • q quit
+ NORMAL  ↑↓ nav • enter detail • / search • s sort • tab views • r reload • esc devices • q quit

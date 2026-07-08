@@ -110,12 +110,12 @@ func navExercise(t *testing.T, m Model, cursorOf func(Model) int) {
 
 func TestRulesView_Nav(t *testing.T) {
 	ds := &fakeDS{devices: sampleDevices(), rules: sampleRules()}
-	navExercise(t, loadedRules(ds), func(m Model) int { return m.ruleCursor })
+	navExercise(t, loadedRules(ds), func(m Model) int { return m.cursor })
 }
 
 func TestAlarmsView_Nav(t *testing.T) {
 	ds := &fakeDS{devices: sampleDevices(), alarms: sampleAlarms()}
-	navExercise(t, loadedAlarms(ds), func(m Model) int { return m.alarmCursor })
+	navExercise(t, loadedAlarms(ds), func(m Model) int { return m.cursor })
 }
 
 func TestNetworksView_Nav(t *testing.T) {
@@ -126,7 +126,7 @@ func TestNetworksView_Nav(t *testing.T) {
 	nm, _ := m.Update(runeKey("N"))
 	m = nm.(Model)
 	nm, _ = m.Update(networksMsg{networks: ds.networks})
-	navExercise(t, nm.(Model), func(m Model) int { return m.networkCursor })
+	navExercise(t, nm.(Model), func(m Model) int { return m.cursor })
 }
 
 func TestWANView_Nav(t *testing.T) {
@@ -137,7 +137,7 @@ func TestWANView_Nav(t *testing.T) {
 	nm, _ := m.Update(runeKey("W"))
 	m = nm.(Model)
 	nm, _ = m.Update(wansMsg{wans: ds.wans})
-	navExercise(t, nm.(Model), func(m Model) int { return m.wanCursor })
+	navExercise(t, nm.(Model), func(m Model) int { return m.cursor })
 }
 
 func TestDataView_Reload(t *testing.T) {
