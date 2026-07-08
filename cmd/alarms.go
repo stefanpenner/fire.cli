@@ -50,14 +50,14 @@ func newAlarmArchiveCmd(app *App) *cobra.Command {
 			if id == "" {
 				return nil // cancelled
 			}
-			if !app.confirmed(confirm, fmt.Sprintf("archive alarm %s", id)) {
+			res := &mutationResult{Action: "alarm.archive", Target: id}
+			if !app.beginMutation(confirm, fmt.Sprintf("archive alarm %s", id), res) {
 				return nil
 			}
 			if err := app.Client.ArchiveAlarm(c.Context(), id); err != nil {
 				return err
 			}
-			fmt.Fprintf(app.Out, "archived alarm %s\n", id)
-			return nil
+			return app.reportMutation(fmt.Sprintf("archived alarm %s", id), res)
 		},
 	}
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "apply the change (without it, only prints what would happen)")
@@ -81,14 +81,14 @@ func newAlarmRmCmd(app *App) *cobra.Command {
 			if id == "" {
 				return nil // cancelled
 			}
-			if !app.confirmed(confirm, fmt.Sprintf("delete alarm %s", id)) {
+			res := &mutationResult{Action: "alarm.rm", Target: id}
+			if !app.beginMutation(confirm, fmt.Sprintf("delete alarm %s", id), res) {
 				return nil
 			}
 			if err := app.Client.DeleteAlarm(c.Context(), id); err != nil {
 				return err
 			}
-			fmt.Fprintf(app.Out, "deleted alarm %s\n", id)
-			return nil
+			return app.reportMutation(fmt.Sprintf("deleted alarm %s", id), res)
 		},
 	}
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "apply the change (without it, only prints what would happen)")

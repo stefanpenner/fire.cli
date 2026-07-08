@@ -65,7 +65,8 @@ func newRuleAddCmd(app *App) *cobra.Command {
 			if action != "block" && action != "allow" {
 				return fmt.Errorf("action must be block or allow, got %q", action)
 			}
-			if !app.confirmed(confirm, fmt.Sprintf("%s %s %s", action, typ, target)) {
+			res := &mutationResult{Action: "rule.add", Target: target}
+			if !app.beginMutation(confirm, fmt.Sprintf("%s %s %s", action, typ, target), res) {
 				return nil
 			}
 			pid, err := app.Client.CreateRule(c.Context(), firewalla.RuleSpec{
@@ -74,8 +75,8 @@ func newRuleAddCmd(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(app.Out, "created rule %s\n", pid)
-			return nil
+			res.Rule = pid
+			return app.reportMutation(fmt.Sprintf("created rule %s", pid), res)
 		},
 	}
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "apply the change")
@@ -101,14 +102,14 @@ func newRuleRmCmd(app *App) *cobra.Command {
 			if id == "" {
 				return nil // cancelled
 			}
-			if !app.confirmed(confirm, fmt.Sprintf("delete rule %s", id)) {
+			res := &mutationResult{Action: "rule.rm", Target: id, Rule: id}
+			if !app.beginMutation(confirm, fmt.Sprintf("delete rule %s", id), res) {
 				return nil
 			}
 			if err := app.Client.DeleteRule(c.Context(), id); err != nil {
 				return err
 			}
-			fmt.Fprintf(app.Out, "deleted rule %s\n", id)
-			return nil
+			return app.reportMutation(fmt.Sprintf("deleted rule %s", id), res)
 		},
 	}
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "apply the change")
@@ -135,14 +136,14 @@ func newRuleToggleCmd(app *App, disable bool) *cobra.Command {
 			if id == "" {
 				return nil // cancelled
 			}
-			if !app.confirmed(confirm, fmt.Sprintf("%s rule %s", verb, id)) {
+			res := &mutationResult{Action: "rule." + verb, Target: id, Rule: id}
+			if !app.beginMutation(confirm, fmt.Sprintf("%s rule %s", verb, id), res) {
 				return nil
 			}
 			if err := app.Client.SetRuleDisabled(c.Context(), id, disable); err != nil {
 				return err
 			}
-			fmt.Fprintf(app.Out, "%sd rule %s\n", verb, id)
-			return nil
+			return app.reportMutation(fmt.Sprintf("%sd rule %s", verb, id), res)
 		},
 	}
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "apply the change")

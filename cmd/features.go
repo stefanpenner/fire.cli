@@ -48,18 +48,17 @@ func newFeatureToggleCmd(app *App, enable bool) *cobra.Command {
 			if !ok {
 				return nil // cancelled
 			}
+			res := &mutationResult{Action: "feature." + verb, Target: f.Name, State: onOff(enable)}
 			if f.Enabled == enable {
-				fmt.Fprintf(app.Out, "%s is already %s\n", f.Name, onOff(enable))
-				return nil
+				return app.reportNoop(fmt.Sprintf("%s is already %s", f.Name, onOff(enable)), res)
 			}
-			if !app.confirmed(confirm, fmt.Sprintf("%s %s", verb, f.Name)) {
+			if !app.beginMutation(confirm, fmt.Sprintf("%s %s", verb, f.Name), res) {
 				return nil
 			}
 			if err := app.Client.SetFeature(c.Context(), f.Key, enable); err != nil {
 				return err
 			}
-			fmt.Fprintf(app.Out, "%sd %s\n", verb, f.Name)
-			return nil
+			return app.reportMutation(fmt.Sprintf("%sd %s", verb, f.Name), res)
 		},
 	}
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "apply the change (without it, only prints what would happen)")

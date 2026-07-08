@@ -10,7 +10,67 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stefanpenner/fire.cli/internal/picker"
+	"github.com/stefanpenner/fire.cli/internal/render"
 )
+
+// mutationResult is the machine-readable outcome of a mutating command, emitted
+// as one JSON object when --json is set. `applied` is the field agents key on:
+// false + dryRun means nothing changed (no --confirm); true means it did.
+type mutationResult struct {
+	Action  string `json:"action"`           // block | unblock | pause | resume | rule.add | feature.enable | alarm.archive | …
+	Target  string `json:"target,omitempty"` // device label, rule id, feature name, alarm id
+	MAC     string `json:"mac,omitempty"`
+	Rule    string `json:"rule,omitempty"`  // policy id created / affected
+	Count   *int   `json:"count,omitempty"` // rules removed
+	State   string `json:"state,omitempty"` // on | off (feature toggles)
+	Applied bool   `json:"applied"`
+	DryRun  bool   `json:"dryRun,omitempty"`
+	Message string `json:"message,omitempty"` // the human sentence, for convenience
+}
+
+// beginMutation gates a mutating action, returning true to proceed. Human mode
+// is unchanged: with --confirm it prints "<action>…" to stderr; without it, it
+// prints "would <action>" and returns false. In --json mode it prints nothing
+// on the confirmed path (the result follows from reportMutation) and emits a
+// dryRun object on the unconfirmed path.
+func (a *App) beginMutation(confirm bool, action string, res *mutationResult) bool {
+	res.Message = action
+	if confirm {
+		if !a.JSON {
+			fmt.Fprintf(a.Err, "%s…\n", action)
+		}
+		return true
+	}
+	res.DryRun = true
+	if a.JSON {
+		_ = render.JSON(a.Out, res)
+	} else {
+		fmt.Fprintf(a.Err, "would %s\nre-run with --confirm to apply\n", action)
+	}
+	return false
+}
+
+// reportMutation reports a completed mutation: JSON with applied=true when
+// --json, else the human sentence to stdout.
+func (a *App) reportMutation(msg string, res *mutationResult) error {
+	res.Applied, res.Message = true, msg
+	if a.JSON {
+		return render.JSON(a.Out, res)
+	}
+	fmt.Fprintln(a.Out, msg)
+	return nil
+}
+
+// reportNoop reports a mutation that was unnecessary (e.g. a feature already in
+// the requested state): human sentence to stdout, or JSON with applied=false.
+func (a *App) reportNoop(msg string, res *mutationResult) error {
+	res.Message = msg
+	if a.JSON {
+		return render.JSON(a.Out, res)
+	}
+	fmt.Fprintln(a.Out, msg)
+	return nil
+}
 
 // resolveOrPick turns args[0] into a MAC, or—when no device arg is given and a
 // terminal is available—opens the fuzzy picker. Returns "" with a nil error
@@ -58,18 +118,6 @@ func (app *App) completeDevice(cmd *cobra.Command, _ []string, _ string) ([]stri
 }
 
 var macRE = regexp.MustCompile(`^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$`)
-
-// confirmed gates a mutating action. It always prints what will change; when
-// confirm is false it tells the user how to apply and returns false so the
-// caller can stop without performing the mutation.
-func (a *App) confirmed(confirm bool, action string) bool {
-	if confirm {
-		fmt.Fprintf(a.Err, "%s…\n", action)
-		return true
-	}
-	fmt.Fprintf(a.Err, "would %s\nre-run with --confirm to apply\n", action)
-	return false
-}
 
 // looksLikeMAC reports whether s is a colon-separated MAC address.
 func looksLikeMAC(s string) bool { return macRE.MatchString(s) }
