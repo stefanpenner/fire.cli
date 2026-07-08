@@ -1,94 +1,107 @@
 ------------------------------ MODULE TuiLoad ------------------------------
 (***************************************************************************)
-(* Purpose: prove the TUI never displays a stale load result.              *)
+(* Purpose: decide the guard the TUI needs so it never displays a stale     *)
+(* async-load result, INCLUDING under live auto-refresh.                    *)
 (*                                                                          *)
-(* The dashboard fetches data off the UI goroutine (loadCmd, loadRulesCmd,  *)
-(* …). Switching views or reloading fires a NEW async load while an older   *)
-(* one may still be in flight. When a response arrives the code applies it. *)
-(* If it applies UNCONDITIONALLY (the original design), a slow load from a  *)
-(* view the user already left can clear the spinner and show data that does *)
-(* not belong to the current view.                                          *)
+(* The dashboard fetches data off the UI goroutine. The user can switch     *)
+(* views, press r, or enable live auto-refresh (a periodic reload of the    *)
+(* current view). Each of those issues a load; responses may arrive         *)
+(* out of order (that is the concurrency). When a response arrives the code  *)
+(* must decide whether to apply it.                                         *)
 (*                                                                          *)
-(* Guarded models the fix: a list response is applied only if the model is  *)
-(* still on that result's view (the msg type identifies the view). A load    *)
-(* for a view the user already left is dropped. Unguarded (Guarded = FALSE)  *)
-(* is the original design -- apply every response -- and is expected to      *)
-(* violate Coherent (the mutation/bait check, TuiLoad_bug.cfg).             *)
+(* Guard selects the policy under test:                                     *)
+(*   "none"      apply every response            (original naive design)    *)
+(*   "viewmatch" apply if it is for the current view (the first fix)        *)
+(*   "seq"       apply if it is for the current view AND is the latest       *)
+(*               generation issued for that view                            *)
 (*                                                                          *)
-(* Atomicity grain: issuing a load, and delivering one response, are each   *)
-(* one atomic step. Two views suffice to expose the cross-view race.        *)
+(* Result: "viewmatch" is enough for CROSS-view staleness but NOT for two    *)
+(* reloads of the SAME view arriving out of order -- exactly what live       *)
+(* auto-refresh produces. "seq" holds. This is why the code carries a        *)
+(* per-view load generation, mirrored by internal/tui/loadsm.               *)
+(*                                                                          *)
+(* Atomicity grain: issuing a load and delivering one response are each one  *)
+(* atomic step. gen[v] is the latest generation handed out for view v.       *)
 (***************************************************************************)
 EXTENDS Naturals
 
 CONSTANTS
-    Views,    \* the set of dashboard views, e.g. {"dev", "rules"}
-    MaxSeq,   \* bound on how many loads may be issued (bounds the run)
-    Guarded   \* TRUE applies the seq guard (the fix); FALSE is the old design
+    Views,   \* dashboard views, e.g. {"dev", "rules"}
+    MaxGen,  \* bound on reloads per view (bounds the run)
+    Guard    \* "none" | "viewmatch" | "seq"
 
-None == "none"
+None == "none-view"
 
 VARIABLES
-    view,     \* the view the user is currently on
-    reqs,     \* in-flight loads: set of [seq, vw]
-    nextSeq,  \* next seq to hand out
-    curSeq,   \* seq of the most recent load kicked off (the model's loadSeq)
-    shownVw,  \* view whose data is currently displayed (None before first load)
-    loading   \* is the current view awaiting a load result
+    view,     \* the view the user is on
+    gen,      \* [Views -> Nat]: latest load generation issued per view
+    inflight, \* set of in-flight loads: [vw, g]
+    shownVw,  \* view whose data is displayed (None before the first load)
+    shownGen, \* generation of the displayed data
+    loading   \* is the current view awaiting a (newer) load
 
-vars == <<view, reqs, nextSeq, curSeq, shownVw, loading>>
+vars == <<view, gen, inflight, shownVw, shownGen, loading>>
 
-Req == [seq: 0..MaxSeq, vw: Views]
+Load == [vw: Views, g: 0..MaxGen]
 
 TypeOK ==
     /\ view \in Views
-    /\ reqs \subseteq Req
-    /\ nextSeq \in 0..(MaxSeq + 1)
-    /\ curSeq \in 0..MaxSeq
+    /\ gen \in [Views -> 0..MaxGen]
+    /\ inflight \subseteq Load
     /\ shownVw \in (Views \union {None})
+    /\ shownGen \in 0..MaxGen
     /\ loading \in BOOLEAN
 
-\* Init fires the first device load (seq 0), matching Model.Init/loadCmd.
 Init ==
     /\ view \in Views
-    /\ reqs = {[seq |-> 0, vw |-> view]}
-    /\ nextSeq = 1
-    /\ curSeq = 0
+    /\ gen = [v \in Views |-> 0]
+    /\ inflight = {[vw |-> view, g |-> 0]}
     /\ shownVw = None
+    /\ shownGen = 0
     /\ loading = TRUE
 
-\* Switch to view v (v = view models a plain reload). Kicks off a fresh load
-\* and makes it the current one.
+\* Switch to view v: issue a load at v's CURRENT generation (a plain view change
+\* does not supersede an in-flight reload; only Reload bumps the generation).
 Switch(v) ==
-    /\ nextSeq <= MaxSeq
     /\ view' = v
-    /\ reqs' = reqs \union {[seq |-> nextSeq, vw |-> v]}
-    /\ curSeq' = nextSeq
-    /\ nextSeq' = nextSeq + 1
+    /\ inflight' = inflight \union {[vw |-> v, g |-> gen[v]]}
     /\ loading' = TRUE
-    /\ UNCHANGED shownVw
+    /\ UNCHANGED <<gen, shownVw, shownGen>>
 
-\* A pending load completes. apply mirrors the code: with the guard, apply only
-\* when the model is still on this result's view; without it, always apply.
+\* Reload the current view: the r key, a post-mutation refresh, or an
+\* auto-refresh tick. Repeated reloads are what create same-view races.
+Reload ==
+    /\ gen[view] < MaxGen
+    /\ gen' = [gen EXCEPT ![view] = @ + 1]
+    /\ inflight' = inflight \union {[vw |-> view, g |-> gen[view] + 1]}
+    /\ loading' = TRUE
+    /\ UNCHANGED <<view, shownVw, shownGen>>
+
+\* A pending load completes. Any in-flight load may be chosen, modeling
+\* out-of-order arrival. apply mirrors the code's guard.
 Deliver(r) ==
-    /\ r \in reqs
-    /\ reqs' = reqs \ {r}
-    /\ LET apply == IF Guarded THEN r.vw = view ELSE TRUE
+    /\ r \in inflight
+    /\ inflight' = inflight \ {r}
+    /\ LET apply == CASE Guard = "none"      -> TRUE
+                      [] Guard = "viewmatch" -> r.vw = view
+                      [] Guard = "seq"       -> r.vw = view /\ r.g = gen[r.vw]
        IN IF apply
             THEN /\ shownVw' = r.vw
+                 /\ shownGen' = r.g
                  /\ loading' = FALSE
-            ELSE UNCHANGED <<shownVw, loading>>
-    /\ UNCHANGED <<view, nextSeq, curSeq>>
+            ELSE UNCHANGED <<shownVw, shownGen, loading>>
+    /\ UNCHANGED <<view, gen>>
 
 Next ==
     \/ \E v \in Views : Switch(v)
-    \/ \E r \in reqs : Deliver(r)
+    \/ Reload
+    \/ \E r \in inflight : Deliver(r)
 
 Spec == Init /\ [][Next]_vars
 
-\* --- property ---
-
-\* When the UI is not showing a spinner, the data on screen belongs to the
-\* current view. Unguarded delivery of a stale cross-view load breaks this.
-Coherent == (~loading) => (shownVw = view)
+\* When the UI is not showing a spinner, the data on screen is the LATEST
+\* load issued for the CURRENT view. Both cross-view and same-view (reorder)
+\* staleness violate this.
+Coherent == (~loading) => (shownVw = view /\ shownGen = gen[view])
 
 =============================================================================

@@ -43,3 +43,27 @@ func TestAutoRefresh_TickIgnoredWhenOff(t *testing.T) {
 	_, cmd := m.Update(refreshTickMsg{})
 	assert.Nil(t, cmd, "no reschedule when auto-refresh is off")
 }
+
+// TestSeqGuard_DropsStaleSameViewReload proves the fix for the bug
+// specs/TuiLoad.tla found: two reloads of the same view (as live auto-refresh
+// produces) arriving out of order must not let the older one win.
+func TestSeqGuard_DropsStaleSameViewReload(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices()}
+	m := loaded(ds) // devices delivered at gen 0
+
+	nm, _ := m.Update(runeKey("r")) // reload → gen 1
+	m = nm.(Model)
+	nm, _ = m.Update(runeKey("r")) // reload → gen 2
+	m = nm.(Model)
+	require.Equal(t, 2, m.loadGen[deviceView])
+
+	// A stale gen-1 response arrives late: it must be ignored.
+	nm, _ = m.Update(devicesMsg{devices: sampleDevices()[:1], gen: 1})
+	m = nm.(Model)
+	assert.Len(t, m.devices, 3, "stale gen-1 reload dropped")
+
+	// The current gen-2 response applies.
+	nm, _ = m.Update(devicesMsg{devices: sampleDevices()[:1], gen: 2})
+	m = nm.(Model)
+	assert.Len(t, m.devices, 1, "current gen-2 reload applied")
+}
