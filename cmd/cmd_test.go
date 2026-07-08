@@ -16,18 +16,19 @@ import (
 
 // fakeClient implements the Client interface and records calls.
 type fakeClient struct {
-	devices   []firewalla.Device
-	resolvers []firewalla.Resolver
-	dns       []firewalla.DNSQuery
-	networks  []firewalla.Network
-	rules     []firewalla.Rule
-	wans      []firewalla.WAN
-	dataUsage firewalla.DataUsageReport
-	peers     []firewalla.Peer
-	alarms    []firewalla.Alarm
-	features  []firewalla.Feature
-	rawOut    string
-	err       error
+	devices    []firewalla.Device
+	resolvers  []firewalla.Resolver
+	dns        []firewalla.DNSQuery
+	networks   []firewalla.Network
+	rules      []firewalla.Rule
+	wans       []firewalla.WAN
+	dataUsage  firewalla.DataUsageReport
+	peers      []firewalla.Peer
+	topTalkers []firewalla.TopTalker
+	alarms     []firewalla.Alarm
+	features   []firewalla.Feature
+	rawOut     string
+	err        error
 
 	// recorded inputs
 	gotDomain   string
@@ -72,6 +73,9 @@ func (f *fakeClient) DataUsage(context.Context) (firewalla.DataUsageReport, erro
 func (f *fakeClient) Traffic(_ context.Context, mac string) ([]firewalla.Peer, error) {
 	f.gotMAC = mac
 	return f.peers, f.err
+}
+func (f *fakeClient) TopTalkers(context.Context) ([]firewalla.TopTalker, error) {
+	return f.topTalkers, f.err
 }
 func (f *fakeClient) ListAlarms(_ context.Context, limit int) ([]firewalla.Alarm, error) {
 	f.gotLimit = limit

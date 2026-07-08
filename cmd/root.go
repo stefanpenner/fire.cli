@@ -29,6 +29,7 @@ type Client interface {
 	ListWANs(ctx context.Context) ([]firewalla.WAN, error)
 	DataUsage(ctx context.Context) (firewalla.DataUsageReport, error)
 	Traffic(ctx context.Context, mac string) ([]firewalla.Peer, error)
+	TopTalkers(ctx context.Context) ([]firewalla.TopTalker, error)
 	ListAlarms(ctx context.Context, limit int) ([]firewalla.Alarm, error)
 	ListFeatures(ctx context.Context) ([]firewalla.Feature, error)
 	CreateRule(ctx context.Context, spec firewalla.RuleSpec) (string, error)
@@ -115,6 +116,7 @@ func NewRootCmd(app *App) *cobra.Command {
 		newWANCmd(app),
 		newDataCmd(app),
 		newTrafficCmd(app),
+		newTopCmd(app),
 		newAlarmsCmd(app),
 		newFeaturesCmd(app),
 		newBlockCmd(app),

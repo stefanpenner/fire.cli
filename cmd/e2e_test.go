@@ -104,6 +104,14 @@ func TestE2E_Data(t *testing.T) {
 	assert.Contains(t, out, "plan") // summary line "used … of … plan"
 }
 
+func TestE2E_Top(t *testing.T) {
+	ft := transport.NewFake("pi@test").
+		OnMatch("sumflow:*", transport.Result{Stdout: fwFixture(t, "top_talkers.txt")})
+	out, _, err := execReal(t, ft, "top")
+	require.NoError(t, err)
+	assert.Contains(t, out, "AA:BB:CC:DD:EE:01") // ranked first
+}
+
 func TestE2E_DevicesJSON(t *testing.T) {
 	ft := transport.NewFake("pi@test").
 		OnMatch("host:mac:", transport.Result{Stdout: fwFixture(t, "devices.txt")})

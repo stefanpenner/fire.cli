@@ -55,6 +55,9 @@ run 'for k in $(redis-cli --scan --pattern "policy:*"); do
          echo "@@WANU@@ $u"; redis-cli get "monthly:wan:data:usage:$u:$ts"; done'
 } > "$OUT/data_usage.txt" || true
 
+# Top talkers — per-device bandwidth from sumflow rollups (box-wide).
+run "for k in \$(redis-cli --scan --pattern 'sumflow:*'); do case \"\$k\" in *:local:*) continue ;; *:download:*|*:upload:*) s=\$(redis-cli zrange \"\$k\" 0 -1 withscores | awk 'NR%2==0{sum+=\$1} END{printf \"%.0f\", sum+0}'); echo \"\$k \$s\" ;; esac; done" > "$OUT/top_talkers.txt" || true
+
 # Traffic + DNS flows — per device (replace MAC with a real one).
 read -r -p "MAC for a sample sumflow/dns capture (blank to skip): " MAC
 if [ -n "${MAC:-}" ]; then

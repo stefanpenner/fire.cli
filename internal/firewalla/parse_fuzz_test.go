@@ -123,6 +123,11 @@ func FuzzParseAlarms(f *testing.F) {
 	f.Fuzz(func(t *testing.T, s string) { _ = parseAlarms(s) })
 }
 
+func FuzzParseTopTalkers(f *testing.F) {
+	seedFromTestdata(f)
+	f.Fuzz(func(t *testing.T, s string) { _ = parseTopTalkers(s) })
+}
+
 // FuzzParseUnixFloat: never panics, and empty/garbage yields the zero time.
 func FuzzParseUnixFloat(f *testing.F) {
 	for _, s := range []string{"", "0", "1700000000", "1700000000.5", "-1", "1e9", "nan", "  "} {

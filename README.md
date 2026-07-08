@@ -36,6 +36,7 @@ fire data                             # data-plan usage this period, per WAN (al
 fire rules                            # firewall block/allow rules (--all for disabled)
 fire alarms --limit 20                # recent security alarms (scans, new devices, …)
 fire features                         # which features are on (ad block, VPN, DoH, QoS, …)
+fire top                              # rank devices by bandwidth used (top talkers)
 fire traffic "Living Room TV"         # who a device talks to (internet + LAN peers)
 fire traffic phone laptop             # traffic between two devices
 fire traffic phone --with video.example.com # …filtered to a destination

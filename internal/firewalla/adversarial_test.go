@@ -55,6 +55,7 @@ func TestParsers_NeverPanic(t *testing.T) {
 			mustNotPanic(t, "parseAlarms", func() { parseAlarms(p.s) })
 			mustNotPanic(t, "parseFeatures", func() { parseFeatures(p.s) })
 			mustNotPanic(t, "featureEnabled", func() { featureEnabled(p.s) })
+			mustNotPanic(t, "parseTopTalkers", func() { parseTopTalkers(p.s) })
 		})
 	}
 }
