@@ -22,3 +22,14 @@ jobs:
         run: go test -race ./...
       - name: Build
         run: go build ./...
+
+  specs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Check TLA+ specs (correct pass, mutation configs fail)
+        run: ./specs/check.sh

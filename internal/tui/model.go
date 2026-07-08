@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stefanpenner/fire.cli/internal/firewalla"
+	"github.com/stefanpenner/fire.cli/internal/tui/loadsm"
 )
 
 // DataSource is the slice of the firewalla client the dashboard needs.
@@ -74,30 +75,35 @@ func (s sortMode) label() string {
 type devicesMsg struct {
 	devices []firewalla.Device
 	err     error
+	gen     int
 }
 
 // rulesMsg carries the result of a rules (re)load.
 type rulesMsg struct {
 	rules []firewalla.Rule
 	err   error
+	gen   int
 }
 
 // alarmsMsg carries the result of an alarms (re)load.
 type alarmsMsg struct {
 	alarms []firewalla.Alarm
 	err    error
+	gen    int
 }
 
 // networksMsg carries the result of a networks (re)load.
 type networksMsg struct {
 	networks []firewalla.Network
 	err      error
+	gen      int
 }
 
 // wansMsg carries the result of a WAN (re)load.
 type wansMsg struct {
 	wans []firewalla.WAN
 	err  error
+	gen  int
 }
 
 // dataMsg carries the result of a data-usage (re)load, with WAN uuid→name
@@ -106,6 +112,7 @@ type dataMsg struct {
 	report firewalla.DataUsageReport
 	names  map[string]string
 	err    error
+	gen    int
 }
 
 // actionMsg carries the result of a confirmed mutation.
@@ -176,6 +183,12 @@ type Model struct {
 	// tab shows cached data instantly and only refreshes in the background
 	// (stale-while-revalidate) instead of blanking to a spinner every time.
 	loaded [dataView + 1]bool
+
+	// loadGen[v] is the latest load generation issued for view v. Every load is
+	// stamped with the generation at issue time; a response is applied only if
+	// it is still the latest (loadsm.Apply). This drops stale same-view loads
+	// that arrive out of order under live auto-refresh. See specs/TuiLoad.tla.
+	loadGen [dataView + 1]int
 
 	autoRefresh  bool          // live mode: periodically reload the current view
 	refreshEvery time.Duration // interval when autoRefresh is on
@@ -315,38 +328,42 @@ func (m Model) switchTo(v viewMode) (tea.Model, tea.Cmd) {
 	m.refilter()
 	fresh := !m.loaded[v] // spinner only on the very first load of a view
 	var cmd tea.Cmd
+	// A view change issues a load at the view's CURRENT generation (it does not
+	// supersede an in-flight reload); only reloadCurrent bumps the generation.
 	switch v {
 	case ruleView:
 		m.rulesLoading = fresh
-		cmd = m.loadRulesCmd()
+		cmd = m.loadRulesCmd(m.loadGen[ruleView])
 	case alarmView:
 		m.alarmsLoading = fresh
-		cmd = m.loadAlarmsCmd()
+		cmd = m.loadAlarmsCmd(m.loadGen[alarmView])
 	case networkView:
 		m.networksLoading = fresh
-		cmd = m.loadNetworksCmd()
+		cmd = m.loadNetworksCmd(m.loadGen[networkView])
 	case wanView:
 		m.wansLoading = fresh
-		cmd = m.loadWansCmd()
+		cmd = m.loadWansCmd(m.loadGen[wanView])
 	case dataView:
 		m.dataLoading = fresh
-		cmd = m.loadDataCmd()
+		cmd = m.loadDataCmd(m.loadGen[dataView])
 	default:
 		m.loading = fresh
-		cmd = m.loadCmd()
+		cmd = m.loadCmd(m.loadGen[deviceView])
 	}
 	return m, tea.Batch(cmd, m.loadingTick())
 }
 
 // Init kicks off the first device load and starts the spinner animation.
-func (m Model) Init() tea.Cmd { return tea.Batch(m.loadCmd(), m.spinner.Tick) }
+func (m Model) Init() tea.Cmd {
+	return tea.Batch(m.loadCmd(m.loadGen[deviceView]), m.spinner.Tick)
+}
 
-// loadCmd fetches devices off the UI goroutine.
-func (m Model) loadCmd() tea.Cmd {
+// loadCmd fetches devices off the UI goroutine, stamped with generation gen.
+func (m Model) loadCmd(gen int) tea.Cmd {
 	ds := m.ds
 	return func() tea.Msg {
 		devs, err := ds.ListDevices(context.Background())
-		return devicesMsg{devices: devs, err: err}
+		return devicesMsg{devices: devs, err: err, gen: gen}
 	}
 }
 
@@ -361,8 +378,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// that arrives after the user switched away is stale and dropped, so it
 	// cannot clobber the current view's state. See specs/TuiLoad.tla.
 	case devicesMsg:
-		if m.view != deviceView {
-			return m, nil
+		if !loadsm.Apply(int(deviceView), int(m.view), msg.gen, m.loadGen[deviceView]) {
+			return m, nil // stale (wrong view or superseded generation)
 		}
 		m.loading = false
 		m.err = msg.err
@@ -373,7 +390,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case rulesMsg:
-		if m.view != ruleView {
+		if !loadsm.Apply(int(ruleView), int(m.view), msg.gen, m.loadGen[ruleView]) {
 			return m, nil
 		}
 		m.rulesLoading = false
@@ -386,7 +403,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case alarmsMsg:
-		if m.view != alarmView {
+		if !loadsm.Apply(int(alarmView), int(m.view), msg.gen, m.loadGen[alarmView]) {
 			return m, nil
 		}
 		m.alarmsLoading = false
@@ -399,7 +416,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case networksMsg:
-		if m.view != networkView {
+		if !loadsm.Apply(int(networkView), int(m.view), msg.gen, m.loadGen[networkView]) {
 			return m, nil
 		}
 		m.networksLoading = false
@@ -412,7 +429,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case wansMsg:
-		if m.view != wanView {
+		if !loadsm.Apply(int(wanView), int(m.view), msg.gen, m.loadGen[wanView]) {
 			return m, nil
 		}
 		m.wansLoading = false
@@ -425,7 +442,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case dataMsg:
-		if m.view != dataView {
+		if !loadsm.Apply(int(dataView), int(m.view), msg.gen, m.loadGen[dataView]) {
 			return m, nil
 		}
 		m.dataLoading = false
@@ -442,17 +459,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.status = msg.text
 		}
-		// Refresh whichever list is showing so it reflects the change.
+		// Refresh whichever list is showing so it reflects the change; bump the
+		// generation so a slower prior load can't overwrite this refresh.
+		m.loadGen[m.view]++
+		g := m.loadGen[m.view]
 		switch m.view {
 		case ruleView:
 			m.rulesLoading = true
-			return m, m.loadRulesCmd()
+			return m, m.loadRulesCmd(g)
 		case alarmView:
 			m.alarmsLoading = true
-			return m, m.loadAlarmsCmd()
+			return m, m.loadAlarmsCmd(g)
 		default:
 			m.loading = true
-			return m, m.loadCmd()
+			return m, m.loadCmd(g)
 		}
 
 	case detailMsg:
@@ -663,26 +683,30 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // showing a spinner only when there's nothing cached to display meanwhile.
 func (m Model) reloadCurrent() (tea.Model, tea.Cmd) {
 	m.status, m.err = "", nil
+	// A reload bumps the current view's generation so that if two reloads are in
+	// flight, an older one arriving late is dropped (loadsm.Apply).
+	m.loadGen[m.view]++
+	g := m.loadGen[m.view]
 	var cmd tea.Cmd
 	switch m.view {
 	case ruleView:
 		m.rulesLoading = len(m.rules) == 0
-		cmd = m.loadRulesCmd()
+		cmd = m.loadRulesCmd(g)
 	case alarmView:
 		m.alarmsLoading = len(m.alarms) == 0
-		cmd = m.loadAlarmsCmd()
+		cmd = m.loadAlarmsCmd(g)
 	case networkView:
 		m.networksLoading = len(m.networks) == 0
-		cmd = m.loadNetworksCmd()
+		cmd = m.loadNetworksCmd(g)
 	case wanView:
 		m.wansLoading = len(m.wans) == 0
-		cmd = m.loadWansCmd()
+		cmd = m.loadWansCmd(g)
 	case dataView:
 		m.dataLoading = m.data.PlanTotal == 0 && len(m.data.WANs) == 0
-		cmd = m.loadDataCmd()
+		cmd = m.loadDataCmd(g)
 	default:
 		m.loading = len(m.devices) == 0
-		cmd = m.loadCmd()
+		cmd = m.loadCmd(g)
 	}
 	return m, tea.Batch(cmd, m.loadingTick())
 }
@@ -830,11 +854,11 @@ func clampIndex(i, n int) int {
 }
 
 // loadRulesCmd fetches rules off the UI goroutine.
-func (m Model) loadRulesCmd() tea.Cmd {
+func (m Model) loadRulesCmd(gen int) tea.Cmd {
 	ds := m.ds
 	return func() tea.Msg {
 		rules, err := ds.ListRules(context.Background())
-		return rulesMsg{rules: rules, err: err}
+		return rulesMsg{rules: rules, err: err, gen: gen}
 	}
 }
 
@@ -910,11 +934,11 @@ func (m Model) handleAlarmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // loadAlarmsCmd fetches recent alarms off the UI goroutine.
-func (m Model) loadAlarmsCmd() tea.Cmd {
+func (m Model) loadAlarmsCmd(gen int) tea.Cmd {
 	ds := m.ds
 	return func() tea.Msg {
 		alarms, err := ds.ListAlarms(context.Background(), alarmViewLimit)
-		return alarmsMsg{alarms: alarms, err: err}
+		return alarmsMsg{alarms: alarms, err: err, gen: gen}
 	}
 }
 
@@ -974,11 +998,11 @@ func (m Model) selectedNetwork() (firewalla.Network, bool) {
 }
 
 // loadNetworksCmd fetches networks off the UI goroutine.
-func (m Model) loadNetworksCmd() tea.Cmd {
+func (m Model) loadNetworksCmd(gen int) tea.Cmd {
 	ds := m.ds
 	return func() tea.Msg {
 		nets, err := ds.ListNetworks(context.Background())
-		return networksMsg{networks: nets, err: err}
+		return networksMsg{networks: nets, err: err, gen: gen}
 	}
 }
 
@@ -993,36 +1017,24 @@ func (m Model) selectedWAN() (firewalla.WAN, bool) {
 }
 
 // loadWansCmd fetches the internet uplinks off the UI goroutine.
-func (m Model) loadWansCmd() tea.Cmd {
+func (m Model) loadWansCmd(gen int) tea.Cmd {
 	ds := m.ds
 	return func() tea.Msg {
 		wans, err := ds.ListWANs(context.Background())
-		return wansMsg{wans: wans, err: err}
+		return wansMsg{wans: wans, err: err, gen: gen}
 	}
 }
 
 // ---- data-usage view (read-only summary) ----
 
-// handleDataKey handles keys while the data-usage summary is showing.
-func (m Model) handleDataKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, m.keys.Cancel):
-		m.view = deviceView
-	case key.Matches(msg, m.keys.Reload):
-		m.dataLoading, m.status, m.err = true, "", nil
-		return m, m.loadDataCmd()
-	}
-	return m, nil
-}
-
 // loadDataCmd fetches the data-usage report and resolves WAN uuid→name from the
 // network list (best effort), off the UI goroutine.
-func (m Model) loadDataCmd() tea.Cmd {
+func (m Model) loadDataCmd(gen int) tea.Cmd {
 	ds := m.ds
 	return func() tea.Msg {
 		report, err := ds.DataUsage(context.Background())
 		if err != nil {
-			return dataMsg{err: err}
+			return dataMsg{err: err, gen: gen}
 		}
 		names := map[string]string{}
 		if nets, nerr := ds.ListNetworks(context.Background()); nerr == nil {
