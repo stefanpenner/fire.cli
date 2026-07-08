@@ -3,4 +3,4 @@
 
 ❯ Home             lan            192.0.2.0/24       br0
   IoT              lan   vlan 2001 192.0.2.64/26      eth2.2001
-↑↓ nav • r reload • esc devices • q quit
+ NORMAL                     ↑↓ nav • tab views • r reload • esc devices • q quit

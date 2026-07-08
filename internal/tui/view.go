@@ -44,6 +44,12 @@ func (m Model) View() string {
 	return b.String()
 }
 
+// loadingLine renders the animated spinner next to "loading…", shown while any
+// view's data is in flight.
+func (m Model) loadingLine() string {
+	return "  " + m.spinner.View() + m.styles.Subtle.Render("loading…")
+}
+
 // tabBar renders the view switcher with the active view highlighted.
 func (m Model) tabBar() string {
 	tabs := []struct {
@@ -59,18 +65,18 @@ func (m Model) tabBar() string {
 	}
 	parts := make([]string, len(tabs))
 	for i, t := range tabs {
-		style := m.styles.Subtle
+		style := m.styles.TabInactive
 		if t.v == m.view {
-			style = m.styles.Selected
+			style = m.styles.TabActive
 		}
 		parts[i] = style.Render(" " + t.label + " ")
 	}
-	return strings.Join(parts, m.styles.Subtle.Render("│"))
+	return strings.Join(parts, m.styles.TabInactive.Render("│"))
 }
 
 // viewHeader renders a non-device view's title line plus the tab bar.
 func (m Model) viewHeader(suffix string) string {
-	return m.styles.Title.Render("🔥 fire") + m.styles.Subtle.Render(suffix) + "\n" + m.tabBar()
+	return m.styles.TitleBadge.Render("🔥 fire") + m.styles.Subtle.Render(suffix) + "\n" + m.tabBar()
 }
 
 func (m Model) headerView() string {
@@ -85,7 +91,7 @@ func (m Model) headerView() string {
 			online++
 		}
 	}
-	title := m.styles.Title.Render("🔥 fire") + m.styles.Subtle.Render("  "+host)
+	title := m.styles.TitleBadge.Render("🔥 fire") + m.styles.Subtle.Render("  "+host)
 	countText := fmt.Sprintf("%d devices • %d online", len(m.devices), online)
 	if m.onlineOnly {
 		countText += " • online only"
@@ -95,7 +101,7 @@ func (m Model) headerView() string {
 
 func (m Model) listView() string {
 	if m.loading && len(m.devices) == 0 {
-		return m.styles.Subtle.Render("  loading…")
+		return m.loadingLine()
 	}
 	if m.err != nil {
 		return m.styles.ErrText.Render("  error: " + m.err.Error())
@@ -154,26 +160,52 @@ func (m Model) deviceRow(d firewalla.Device, selected bool) string {
 	return cursor + statusStyle.Render(dot) + " " + line
 }
 
-// confirmBar renders the staged-action confirmation line shown in any view.
+// confirmBar renders the staged-action confirmation line shown in any view,
+// led by a CONFIRM mode pill (LazyVim-style statusline).
 func (m Model) confirmBar() string {
-	return m.styles.Status.Render(m.pending.prompt) +
+	return m.styles.ModePill.Render(" CONFIRM ") + " " +
+		m.styles.Status.Render(m.pending.prompt) +
 		m.styles.Footer.Render("   y confirm • n cancel")
 }
 
-func (m Model) footerView() string {
+// statusBar renders a LazyVim-style footer: a mode pill on the left, an
+// optional transient status message, and the right-aligned help hint, padded
+// to the window width.
+func (m Model) statusBar(help string) string {
+	mode := "NORMAL"
+	if m.searching {
+		mode = "SEARCH"
+	}
+	left := m.styles.ModePill.Render(" " + mode + " ")
+	if m.status != "" {
+		left += " " + m.styles.Status.Render(m.status)
+	}
+	right := m.styles.Footer.Render(help)
+	w := m.width
+	if w < 20 {
+		w = 20
+	}
+	gap := w - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap < 1 {
+		gap = 1
+	}
+	return left + strings.Repeat(" ", gap) + right
+}
+
+// viewFooter is the shared footer for every view: the confirm bar when an
+// action is staged, otherwise the mode-pill status line with the view's help.
+func (m Model) viewFooter(help string) string {
 	if m.pending != nil {
 		return m.confirmBar()
 	}
-	if m.err != nil {
-		return m.styles.ErrText.Render(m.err.Error())
-	}
 	if m.searching {
-		return m.styles.Footer.Render(m.keys.SearchHelp())
+		return m.statusBar(m.keys.SearchHelp())
 	}
-	if m.status != "" {
-		return m.styles.Status.Render(m.status) + m.styles.Footer.Render("   "+m.keys.ShortHelp())
-	}
-	return m.styles.Footer.Render(m.keys.ShortHelp())
+	return m.statusBar(help)
+}
+
+func (m Model) footerView() string {
+	return m.viewFooter(m.keys.ShortHelp())
 }
 
 // detailView renders the per-device pane: identity, status, and top peers.
@@ -208,7 +240,7 @@ func (m Model) detailView() string {
 	b.WriteString("\n")
 	switch {
 	case m.detail.loading:
-		b.WriteString(m.styles.Subtle.Render("  loading…"))
+		b.WriteString(m.loadingLine())
 	case m.detail.err != nil:
 		b.WriteString(m.styles.ErrText.Render("  error: " + m.detail.err.Error()))
 	case len(m.detail.peers) == 0:
@@ -248,11 +280,7 @@ func (m Model) detailView() string {
 	}
 
 	b.WriteString("\n")
-	if m.pending != nil {
-		b.WriteString(m.confirmBar())
-	} else {
-		b.WriteString(m.styles.Footer.Render("b block • u unblock • esc back • q close"))
-	}
+	b.WriteString(m.viewFooter("b block • u unblock • esc back • q close"))
 	return b.String()
 }
 
@@ -264,7 +292,7 @@ func (m Model) rulesView() string {
 
 	switch {
 	case m.rulesLoading && len(m.rules) == 0:
-		b.WriteString(m.styles.Subtle.Render("  loading…"))
+		b.WriteString(m.loadingLine())
 	case m.err != nil:
 		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
 	case len(m.rules) == 0:
@@ -287,14 +315,7 @@ func (m Model) rulesView() string {
 	}
 
 	b.WriteString("\n")
-	switch {
-	case m.pending != nil:
-		b.WriteString(m.confirmBar())
-	case m.status != "":
-		b.WriteString(m.styles.Status.Render(m.status) + m.styles.Footer.Render("   "+m.keys.RulesHelp()))
-	default:
-		b.WriteString(m.styles.Footer.Render(m.keys.RulesHelp()))
-	}
+	b.WriteString(m.viewFooter(m.keys.RulesHelp()))
 	return b.String()
 }
 
@@ -323,7 +344,7 @@ func (m Model) alarmsView() string {
 	now := m.now()
 	switch {
 	case m.alarmsLoading && len(m.alarms) == 0:
-		b.WriteString(m.styles.Subtle.Render("  loading…"))
+		b.WriteString(m.loadingLine())
 	case m.err != nil:
 		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
 	case len(m.alarms) == 0:
@@ -346,14 +367,7 @@ func (m Model) alarmsView() string {
 	}
 
 	b.WriteString("\n")
-	switch {
-	case m.pending != nil:
-		b.WriteString(m.confirmBar())
-	case m.status != "":
-		b.WriteString(m.styles.Status.Render(m.status) + m.styles.Footer.Render("   "+m.keys.AlarmsHelp()))
-	default:
-		b.WriteString(m.styles.Footer.Render(m.keys.AlarmsHelp()))
-	}
+	b.WriteString(m.viewFooter(m.keys.AlarmsHelp()))
 	return b.String()
 }
 
@@ -389,7 +403,7 @@ func (m Model) networksView() string {
 
 	switch {
 	case m.networksLoading && len(m.networks) == 0:
-		b.WriteString(m.styles.Subtle.Render("  loading…"))
+		b.WriteString(m.loadingLine())
 	case m.err != nil:
 		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
 	case len(m.networks) == 0:
@@ -412,7 +426,7 @@ func (m Model) networksView() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(m.styles.Footer.Render(m.keys.NetworksHelp()))
+	b.WriteString(m.viewFooter(m.keys.NetworksHelp()))
 	return b.String()
 }
 
@@ -437,7 +451,7 @@ func (m Model) wansView() string {
 
 	switch {
 	case m.wansLoading && len(m.wans) == 0:
-		b.WriteString(m.styles.Subtle.Render("  loading…"))
+		b.WriteString(m.loadingLine())
 	case m.err != nil:
 		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
 	case len(m.wans) == 0:
@@ -460,7 +474,7 @@ func (m Model) wansView() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(m.styles.Footer.Render(m.keys.WANHelp()))
+	b.WriteString(m.viewFooter(m.keys.WANHelp()))
 	return b.String()
 }
 
@@ -499,7 +513,7 @@ func (m Model) dataUsageView() string {
 
 	switch {
 	case m.dataLoading && len(m.data.WANs) == 0 && m.data.PlanTotal == 0:
-		b.WriteString(m.styles.Subtle.Render("  loading…"))
+		b.WriteString(m.loadingLine())
 	case m.err != nil:
 		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
 	default:
@@ -531,7 +545,7 @@ func (m Model) dataUsageView() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(m.styles.Footer.Render(m.keys.DataHelp()))
+	b.WriteString(m.viewFooter(m.keys.DataHelp()))
 	return b.String()
 }
 
