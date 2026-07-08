@@ -111,6 +111,23 @@ func loaded(ds *fakeDS) Model {
 
 func runeKey(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
 
+// firstMsg runs a command and returns its message. switchTo batches the load
+// with the spinner tick; the load is always first, so this unwraps a batch to
+// the load's message.
+func firstMsg(cmd tea.Cmd) tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		if len(batch) == 0 || batch[0] == nil {
+			return nil
+		}
+		return batch[0]()
+	}
+	return msg
+}
+
 func TestNewModel_Defaults(t *testing.T) {
 	m := NewModel(&fakeDS{}, nil)
 	assert.Equal(t, 80, m.width)
@@ -382,7 +399,7 @@ func TestRulesView_OpensAndLists(t *testing.T) {
 	m = nm.(Model)
 	assert.Equal(t, ruleView, m.view)
 	require.NotNil(t, cmd) // load kicked off
-	rm, ok := cmd().(rulesMsg)
+	rm, ok := firstMsg(cmd).(rulesMsg)
 	require.True(t, ok)
 
 	nm, _ = m.Update(rm)
@@ -485,7 +502,7 @@ func TestAlarmsView_OpensAndLists(t *testing.T) {
 	m = nm.(Model)
 	assert.Equal(t, alarmView, m.view)
 	require.NotNil(t, cmd)
-	am, ok := cmd().(alarmsMsg)
+	am, ok := firstMsg(cmd).(alarmsMsg)
 	require.True(t, ok)
 	assert.Equal(t, alarmViewLimit, ds.gotLimit)
 
@@ -563,7 +580,7 @@ func TestNetworksView_OpensAndLists(t *testing.T) {
 	m = nm.(Model)
 	assert.Equal(t, networkView, m.view)
 	require.NotNil(t, cmd)
-	nmsg, ok := cmd().(networksMsg)
+	nmsg, ok := firstMsg(cmd).(networksMsg)
 	require.True(t, ok)
 
 	nm, _ = m.Update(nmsg)
@@ -610,7 +627,7 @@ func TestWANView_OpensAndShowsHealth(t *testing.T) {
 	m = nm.(Model)
 	assert.Equal(t, wanView, m.view)
 	require.NotNil(t, cmd)
-	wm, ok := cmd().(wansMsg)
+	wm, ok := firstMsg(cmd).(wansMsg)
 	require.True(t, ok)
 
 	nm, _ = m.Update(wm)
@@ -650,7 +667,7 @@ func TestDataView_ShowsPlanAndPerWAN(t *testing.T) {
 	m = nm.(Model)
 	assert.Equal(t, dataView, m.view)
 	require.NotNil(t, cmd)
-	dm, ok := cmd().(dataMsg)
+	dm, ok := firstMsg(cmd).(dataMsg)
 	require.True(t, ok)
 
 	nm, _ = m.Update(dm)

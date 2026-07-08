@@ -146,6 +146,11 @@ type Model struct {
 	searching bool
 	spinner   spinner.Model
 
+	// loaded[v] is true once view v has fetched at least once, so revisiting a
+	// tab shows cached data instantly and only refreshes in the background
+	// (stale-while-revalidate) instead of blanking to a spinner every time.
+	loaded [dataView + 1]bool
+
 	showHelp bool
 	loading  bool
 	status   string         // transient feedback (e.g. "blocked Phone")
@@ -228,32 +233,53 @@ func (m Model) cycleView(delta int) (tea.Model, tea.Cmd) {
 	return m.switchTo(viewOrder[idx])
 }
 
+// anyLoading reports whether any view (or the detail pane) is awaiting a fetch.
+// Drives the spinner: it only animates while something is in flight.
+func (m Model) anyLoading() bool {
+	return m.loading || m.rulesLoading || m.alarmsLoading ||
+		m.networksLoading || m.wansLoading || m.dataLoading ||
+		(m.detail != nil && m.detail.loading)
+}
+
+// loadingTick returns the spinner tick when something is loading, else nil, so
+// an idle dashboard stops redrawing every frame.
+func (m Model) loadingTick() tea.Cmd {
+	if m.anyLoading() {
+		return m.spinner.Tick
+	}
+	return nil
+}
+
 // switchTo changes the active view and kicks off its (re)load, clearing any
 // transient status/error. Shared by the tab-cycling nav, the letter shortcuts
-// (R/A/N/W/D), and the number keys (1–6).
+// (R/A/N/W/D), and the number keys (1–6). A view that has loaded before shows
+// its cached data immediately and refreshes in the background (no spinner).
 func (m Model) switchTo(v viewMode) (tea.Model, tea.Cmd) {
 	m.view = v
 	m.status, m.err = "", nil
+	fresh := !m.loaded[v] // spinner only on the very first load of a view
+	var cmd tea.Cmd
 	switch v {
 	case ruleView:
-		m.rulesLoading = true
-		return m, m.loadRulesCmd()
+		m.rulesLoading = fresh
+		cmd = m.loadRulesCmd()
 	case alarmView:
-		m.alarmsLoading = true
-		return m, m.loadAlarmsCmd()
+		m.alarmsLoading = fresh
+		cmd = m.loadAlarmsCmd()
 	case networkView:
-		m.networksLoading = true
-		return m, m.loadNetworksCmd()
+		m.networksLoading = fresh
+		cmd = m.loadNetworksCmd()
 	case wanView:
-		m.wansLoading = true
-		return m, m.loadWansCmd()
+		m.wansLoading = fresh
+		cmd = m.loadWansCmd()
 	case dataView:
-		m.dataLoading = true
-		return m, m.loadDataCmd()
+		m.dataLoading = fresh
+		cmd = m.loadDataCmd()
 	default:
-		m.loading = true
-		return m, m.loadCmd()
+		m.loading = fresh
+		cmd = m.loadCmd()
 	}
+	return m, tea.Batch(cmd, m.loadingTick())
 }
 
 // Init kicks off the first device load and starts the spinner animation.
@@ -285,6 +311,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.err = msg.err
 		if msg.err == nil {
+			m.loaded[deviceView] = true
 			m.setDevices(msg.devices)
 		}
 		return m, nil
@@ -296,6 +323,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rulesLoading = false
 		m.err = msg.err
 		if msg.err == nil {
+			m.loaded[ruleView] = true
 			m.rules = msg.rules
 			m.ruleCursor = clampIndex(m.ruleCursor, len(m.rules))
 		}
@@ -308,6 +336,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.alarmsLoading = false
 		m.err = msg.err
 		if msg.err == nil {
+			m.loaded[alarmView] = true
 			m.alarms = msg.alarms
 			m.alarmCursor = clampIndex(m.alarmCursor, len(m.alarms))
 		}
@@ -320,6 +349,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.networksLoading = false
 		m.err = msg.err
 		if msg.err == nil {
+			m.loaded[networkView] = true
 			m.networks = msg.networks
 			m.networkCursor = clampIndex(m.networkCursor, len(m.networks))
 		}
@@ -332,6 +362,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.wansLoading = false
 		m.err = msg.err
 		if msg.err == nil {
+			m.loaded[wanView] = true
 			m.wans = msg.wans
 			m.wanCursor = clampIndex(m.wanCursor, len(m.wans))
 		}
@@ -344,6 +375,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.dataLoading = false
 		m.err = msg.err
 		if msg.err == nil {
+			m.loaded[dataView] = true
 			m.data, m.dataNames = msg.report, msg.names
 		}
 		return m, nil
@@ -375,6 +407,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
+		if !m.anyLoading() {
+			return m, nil // stop animating once idle; restarted when a load begins
+		}
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
