@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,7 +11,7 @@ import (
 )
 
 func TestBuildSSHArgs(t *testing.T) {
-	args := buildSSHArgs("pi@fire", nil, "redis-cli ping")
+	args := buildSSHArgs("pi@fire", nil, "", "redis-cli ping")
 
 	// Non-interactive, fail-fast defaults must always be present.
 	assert.Contains(t, args, "BatchMode=yes")
@@ -24,13 +25,32 @@ func TestBuildSSHArgs(t *testing.T) {
 }
 
 func TestBuildSSHArgs_ExtraOptionsPrecedeHost(t *testing.T) {
-	args := buildSSHArgs("pi@fire", []string{"-p", "2222"}, "uptime")
+	args := buildSSHArgs("pi@fire", []string{"-p", "2222"}, "", "uptime")
 	assert.Equal(t, []string{
 		"-o", "BatchMode=yes",
 		"-o", "ConnectTimeout=8",
 		"-p", "2222",
 		"pi@fire", "uptime",
 	}, args)
+}
+
+// With a control path, connection-multiplexing options are added so repeated
+// commands reuse one ssh connection (no fresh TCP + auth handshake each time).
+func TestBuildSSHArgs_Multiplex(t *testing.T) {
+	args := buildSSHArgs("pi@fire", nil, "/tmp/fire-ssh/cm-%C", "uptime")
+	assert.Contains(t, args, "ControlMaster=auto")
+	assert.Contains(t, args, "ControlPath=/tmp/fire-ssh/cm-%C")
+	joined := strings.Join(args, " ")
+	assert.Contains(t, joined, "ControlPersist")
+	// Host + command still the final two args.
+	assert.Equal(t, "pi@fire", args[len(args)-2])
+	assert.Equal(t, "uptime", args[len(args)-1])
+}
+
+// NewSSH enables multiplexing by default; WithoutMultiplex disables it.
+func TestNewSSH_MultiplexToggle(t *testing.T) {
+	assert.NotEmpty(t, NewSSH("pi@fire").controlPath, "multiplex on by default")
+	assert.Empty(t, NewSSH("pi@fire", WithoutMultiplex()).controlPath)
 }
 
 func TestSSHTransport_Run_MapsExecOutput(t *testing.T) {

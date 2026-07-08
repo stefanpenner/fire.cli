@@ -2,7 +2,9 @@ package transport
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 )
 
@@ -20,11 +22,13 @@ type execRunner func(ctx context.Context, name string, args ...string) (stdout, 
 // ssh client. Shelling out (rather than using x/crypto/ssh) means we inherit
 // the user's ssh config, keys, agent, and known_hosts for free.
 type SSHTransport struct {
-	host      string
-	sshArgs   []string
-	timeout   time.Duration // per-command wall-clock bound; 0 = none
-	maxOutput int           // cap on stdout/stderr bytes; <=0 = unlimited
-	exec      execRunner
+	host        string
+	sshArgs     []string
+	timeout     time.Duration // per-command wall-clock bound; 0 = none
+	maxOutput   int           // cap on stdout/stderr bytes; <=0 = unlimited
+	controlPath string        // ssh ControlPath for connection reuse; "" disables
+	noMultiplex bool
+	exec        execRunner
 }
 
 // Option configures an SSHTransport.
@@ -48,16 +52,45 @@ func WithMaxOutput(n int) Option {
 	return func(s *SSHTransport) { s.maxOutput = n }
 }
 
+// WithoutMultiplex disables ssh connection reuse (ControlMaster). Useful when
+// the environment forbids control sockets.
+func WithoutMultiplex() Option {
+	return func(s *SSHTransport) { s.noMultiplex = true }
+}
+
 // NewSSH creates an SSHTransport for the given ssh destination (e.g. "pi@fire").
+// Connection multiplexing is on by default: repeated commands (and the TUI's
+// many loads) share one ssh connection instead of paying a TCP + auth
+// handshake each time.
 func NewSSH(host string, opts ...Option) *SSHTransport {
 	s := &SSHTransport{host: host, maxOutput: defaultMaxOutput}
 	for _, o := range opts {
 		o(s)
 	}
+	if !s.noMultiplex {
+		s.controlPath = defaultControlPath()
+	}
 	if s.exec == nil {
 		s.exec = makeDefaultExec(s.maxOutput)
 	}
 	return s
+}
+
+// defaultControlPath returns an ssh ControlPath template in a private temp dir,
+// or "" if it can't be created or would exceed the platform's socket path
+// limit (macOS caps sun_path at ~104 bytes). The %C token is expanded by ssh to
+// a hash of (localhost, remotehost, port, user), so distinct boxes never share
+// a socket.
+func defaultControlPath() string {
+	dir := filepath.Join(os.TempDir(), "fire-ssh")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return ""
+	}
+	path := filepath.Join(dir, "cm-%C")
+	if len(path)+16 > 100 { // %C expands to ~16 hex chars
+		return ""
+	}
+	return path
 }
 
 // Host returns the ssh destination.
@@ -71,7 +104,7 @@ func (s *SSHTransport) Run(ctx context.Context, command string) (Result, error) 
 		ctx, cancel = context.WithTimeout(ctx, s.timeout)
 		defer cancel()
 	}
-	stdout, stderr, code, err := s.exec(ctx, "ssh", buildSSHArgs(s.host, s.sshArgs, command)...)
+	stdout, stderr, code, err := s.exec(ctx, "ssh", buildSSHArgs(s.host, s.sshArgs, s.controlPath, command)...)
 	return Result{
 		Stdout:   capString(string(stdout), s.maxOutput),
 		Stderr:   capString(string(stderr), s.maxOutput),
@@ -82,10 +115,17 @@ func (s *SSHTransport) Run(ctx context.Context, command string) (Result, error) 
 // buildSSHArgs assembles the ssh argument vector. It is a pure function so the
 // argument ordering (defaults, then extra options, then host, then the remote
 // command as the final positional arg) can be asserted in tests.
-func buildSSHArgs(host string, extra []string, command string) []string {
+func buildSSHArgs(host string, extra []string, controlPath, command string) []string {
 	args := []string{
 		"-o", "BatchMode=yes",
 		"-o", "ConnectTimeout=8",
+	}
+	if controlPath != "" {
+		args = append(args,
+			"-o", "ControlMaster=auto",
+			"-o", "ControlPath="+controlPath,
+			"-o", "ControlPersist=30s",
+		)
 	}
 	args = append(args, extra...)
 	args = append(args, host, command)
