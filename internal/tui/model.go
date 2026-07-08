@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -178,6 +179,8 @@ type Model struct {
 	search    textinput.Model
 	searching bool
 	spinner   spinner.Model
+	progress  progress.Model // charmbracelet progress bar for the data-plan gauge
+	colored   bool           // color styles active (drives progress vs plain bars)
 
 	// loaded[v] is true once view v has fetched at least once, so revisiting a
 	// tab shows cached data instantly and only refreshes in the background
@@ -234,21 +237,24 @@ func NewModel(ds DataSource, now func() time.Time) Model {
 	ti.Prompt = "/"
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot))
 	return Model{
-		ds:      ds,
-		now:     now,
-		keys:    DefaultKeyMap(),
-		styles:  DefaultStyles(),
-		width:   80,
-		height:  24,
-		search:  ti,
-		spinner: sp,
-		loading: true,
+		ds:       ds,
+		now:      now,
+		keys:     DefaultKeyMap(),
+		styles:   DefaultStyles(),
+		width:    80,
+		height:   24,
+		search:   ti,
+		spinner:  sp,
+		progress: progress.New(progress.WithDefaultGradient()),
+		colored:  true,
+		loading:  true,
 	}
 }
 
 // WithColor selects colored or plain (NO_COLOR-friendly) styles. Chainable on
 // the constructor: NewModel(ds, now).WithColor(render.ColorEnabled(...)).
 func (m Model) WithColor(enabled bool) Model {
+	m.colored = enabled
 	if enabled {
 		m.styles = DefaultStyles()
 	} else {

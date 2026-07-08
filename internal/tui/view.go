@@ -258,15 +258,22 @@ func (m Model) detailView() string {
 		b.WriteString(m.styles.Subtle.Render("  no recent traffic"))
 	default:
 		peers := topPeers(m.detail.peers, 10)
+		var peak int64 = 1
+		for _, p := range peers {
+			if p.Bytes() > peak {
+				peak = p.Bytes()
+			}
+		}
 		for _, p := range peers {
 			label := p.Label
 			if p.Kind == "device" && label == "" {
 				label = p.PeerMAC
 			}
-			if len(label) > 34 {
-				label = label[:33] + "…"
+			if len(label) > 24 {
+				label = label[:23] + "…"
 			}
-			fmt.Fprintf(&b, "  %-34s  ↓%s ↑%s\n", label,
+			fmt.Fprintf(&b, "  %-24s %s  ↓%s ↑%s\n", label,
+				m.bar(float64(p.Bytes())/float64(peak), 16, m.styles.Online),
 				humanizeBytes(p.Download), humanizeBytes(p.Upload))
 		}
 	}
@@ -613,6 +620,7 @@ func (m Model) dataUsageView() string {
 		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
 	default:
 		total := m.data.Total()
+		barW := min(max(m.width-24, 12), 40)
 		if m.data.PlanTotal > 0 {
 			pct := float64(total) / float64(m.data.PlanTotal) * 100
 			fmt.Fprintf(&b, "  %s of %s plan  %s, resets day %d\n",
@@ -620,6 +628,7 @@ func (m Model) dataUsageView() string {
 				humanizeBytes(m.data.PlanTotal),
 				m.styles.Status.Render(fmt.Sprintf("(%.1f%%)", pct)),
 				m.data.ResetDay)
+			fmt.Fprintf(&b, "  %s\n", m.planBar(float64(total)/float64(m.data.PlanTotal), barW))
 		} else {
 			fmt.Fprintf(&b, "  %s used\n", m.styles.Header.Render(humanizeBytes(total)))
 		}
@@ -627,14 +636,22 @@ func (m Model) dataUsageView() string {
 		if len(m.data.WANs) == 0 {
 			b.WriteString(m.styles.Subtle.Render("  no per-WAN usage"))
 		} else {
+			// Scale each WAN bar to the busiest link so relative usage is obvious.
+			var peak int64 = 1
+			for _, w := range m.data.WANs {
+				if w.Bytes() > peak {
+					peak = w.Bytes()
+				}
+			}
 			for _, w := range m.data.WANs {
 				name := m.dataNames[w.UUID]
 				if name == "" {
 					name = w.UUID
 				}
-				fmt.Fprintf(&b, "  %-16s  ↑%s ↓%s  (%s)\n",
-					truncate(name, 16), humanizeBytes(w.Upload), humanizeBytes(w.Download),
-					humanizeBytes(w.Bytes()))
+				fmt.Fprintf(&b, "  %-16s %s  %s ↑%s ↓%s\n",
+					truncate(name, 16),
+					m.bar(float64(w.Bytes())/float64(peak), barW, m.styles.Online),
+					humanizeBytes(w.Bytes()), humanizeBytes(w.Upload), humanizeBytes(w.Download))
 			}
 		}
 	}
