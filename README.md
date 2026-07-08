@@ -73,7 +73,9 @@ the current view reloads in the background on the interval.
 - **alarms** — `a` archives, `x` deletes the selected alarm.
 - **networks** — read-only list of networks/VLANs.
 - **wan** — read-only internet uplinks with live health (healthy/degraded/down).
-- **data** — read-only data-plan usage this period, per WAN.
+- **data** — data-plan usage with a gauge (charmbracelet `bubbles/progress`)
+  and per-WAN bars; the device detail pane charts a device's top traffic peers.
+  Bars use block glyphs so they stay legible under `NO_COLOR`.
 
 ### Pickers everywhere
 
