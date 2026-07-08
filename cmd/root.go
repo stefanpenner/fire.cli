@@ -90,7 +90,7 @@ func NewRootCmd(app *App) *cobra.Command {
 		// piped/redirected, it falls back to printing help.
 		RunE: func(c *cobra.Command, _ []string) error {
 			if picker.Interactive(app.Out) {
-				return app.runTUI()
+				return app.runTUI(0) // bare `fire`: dashboard, live mode off (toggle with f)
 			}
 			return c.Help()
 		},

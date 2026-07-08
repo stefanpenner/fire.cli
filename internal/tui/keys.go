@@ -14,6 +14,7 @@ type KeyMap struct {
 	Block      key.Binding
 	Unblock    key.Binding
 	Reload     key.Binding
+	Follow     key.Binding
 	Help       key.Binding
 	Quit       key.Binding
 	Enter      key.Binding
@@ -50,6 +51,7 @@ func DefaultKeyMap() KeyMap {
 		Block:      key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "block")),
 		Unblock:    key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "unblock")),
 		Reload:     key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reload")),
+		Follow:     key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "live")),
 		Help:       key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 		Quit:       key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 		Enter:      key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
@@ -98,7 +100,7 @@ func (k KeyMap) AlarmsHelp() string {
 
 // ShortHelp is the one-line footer help for normal mode.
 func (k KeyMap) ShortHelp() string {
-	return "↑↓ nav • tab/→ views • enter detail • / search • s sort • o online • b block • u unblock • ? help • q quit"
+	return "↑↓ nav • tab/→ views • enter detail • / search • s sort • f live • o online • b block • u unblock • ? help • q quit"
 }
 
 // SearchHelp is the footer help shown while typing a search.
@@ -123,6 +125,7 @@ func (k KeyMap) FullHelp() [][2]string {
 		{"R/A/N/W/D", "Jump to rules/alarms/networks/wan/data"},
 		{"e/d/x", "Enable/disable/delete (rules) • archive/delete (alarms)"},
 		{"r", "Reload list"},
+		{"f", "Toggle live auto-refresh"},
 		{"?", "Toggle this help"},
 		{"q / ctrl+c", "Quit"},
 	}

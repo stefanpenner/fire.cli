@@ -61,7 +61,9 @@ views is dropped as stale, so the screen always reflects the view you're on
 (see `specs/TuiLoad.tla`). Piped or redirected, `fire` prints help instead.
 
 Every list view supports `/` to search/filter and `s` to cycle the sort
-(default ↔ by name). `enter` opens a detail pane for the selected row.
+(default ↔ by name). `enter` opens a detail pane for the selected row. `f`
+toggles **live** auto-refresh (or start live with `fire tui --interval 5s`);
+the current view reloads in the background on the interval.
 
 - **devices** — `/` fuzzy-searches by name/IP/MAC; `o` toggles online-only;
   **enter** opens a device's detail pane (top traffic peers); `b`/`u`

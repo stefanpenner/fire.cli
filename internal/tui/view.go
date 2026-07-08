@@ -177,6 +177,13 @@ func (m Model) statusBar(help string) string {
 		mode = "SEARCH"
 	}
 	left := m.styles.ModePill.Render(" " + mode + " ")
+	if m.autoRefresh {
+		every := m.refreshEvery
+		if every <= 0 {
+			every = defaultRefresh
+		}
+		left += " " + m.styles.Online.Render("⟳ live "+every.String())
+	}
 	if m.status != "" {
 		left += " " + m.styles.Status.Render(m.status)
 	}

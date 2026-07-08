@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -15,22 +16,27 @@ import (
 type tuiSource struct{ Client }
 
 func newTUICmd(app *App) *cobra.Command {
-	return &cobra.Command{
+	var interval time.Duration
+	cmd := &cobra.Command{
 		Use:     "tui",
 		Aliases: []string{"dashboard", "ui"},
 		Short:   "Launch the interactive dashboard (searchable devices, block/unblock)",
 		Args:    cobra.NoArgs,
-		RunE:    func(c *cobra.Command, _ []string) error { return app.runTUI() },
+		RunE:    func(c *cobra.Command, _ []string) error { return app.runTUI(interval) },
 	}
+	cmd.Flags().DurationVar(&interval, "interval", 0, "auto-refresh the dashboard on this interval (e.g. 5s; 0 = off, toggle in-app with f)")
+	return cmd
 }
 
-// runTUI starts the Bubble Tea program. It requires a real terminal.
-func (app *App) runTUI() error {
+// runTUI starts the Bubble Tea program. It requires a real terminal. A positive
+// interval starts in live auto-refresh mode.
+func (app *App) runTUI(interval time.Duration) error {
 	if !picker.Interactive(app.Out) {
 		return errors.New("the dashboard needs an interactive terminal; use the subcommands (e.g. `fire devices`) when piping")
 	}
 	m := tui.NewModel(tuiSource{app.Client}, app.now).
-		WithColor(render.ColorEnabled(app.Out, app.NoColor))
+		WithColor(render.ColorEnabled(app.Out, app.NoColor)).
+		WithRefresh(interval)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	return err

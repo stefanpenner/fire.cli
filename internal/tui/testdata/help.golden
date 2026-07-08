@@ -15,6 +15,7 @@
 │   R/A/N/W/D       Jump to rules/alarms/networks/wan/data                  │
 │   e/d/x           Enable/disable/delete (rules) • archive/delete (alarms) │
 │   r               Reload list                                             │
+│   f               Toggle live auto-refresh                                │
 │   ?               Toggle this help                                        │
 │   q / ctrl+c      Quit                                                    │
 │                                                                           │

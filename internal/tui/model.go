@@ -122,6 +122,13 @@ type detailMsg struct {
 	err   error
 }
 
+// refreshTickMsg fires on the auto-refresh interval to reload the current view.
+type refreshTickMsg struct{}
+
+// defaultRefresh is the auto-refresh interval when the user enables live mode
+// without configuring one.
+const defaultRefresh = 5 * time.Second
+
 const onlineWindow = 5 * time.Minute
 
 // Model is the dashboard state.
@@ -169,6 +176,9 @@ type Model struct {
 	// tab shows cached data instantly and only refreshes in the background
 	// (stale-while-revalidate) instead of blanking to a spinner every time.
 	loaded [dataView + 1]bool
+
+	autoRefresh  bool          // live mode: periodically reload the current view
+	refreshEvery time.Duration // interval when autoRefresh is on
 
 	showHelp bool
 	loading  bool
@@ -267,6 +277,25 @@ func (m Model) loadingTick() tea.Cmd {
 		return m.spinner.Tick
 	}
 	return nil
+}
+
+// WithRefresh sets the auto-refresh interval and enables live mode. Chainable
+// on the constructor. A zero or negative interval leaves live mode off.
+func (m Model) WithRefresh(d time.Duration) Model {
+	if d > 0 {
+		m.refreshEvery = d
+		m.autoRefresh = true
+	}
+	return m
+}
+
+// refreshCmd schedules the next auto-refresh tick.
+func (m Model) refreshCmd() tea.Cmd {
+	d := m.refreshEvery
+	if d <= 0 {
+		d = defaultRefresh
+	}
+	return tea.Tick(d, func(time.Time) tea.Msg { return refreshTickMsg{} })
 }
 
 // switchTo changes the active view and kicks off its (re)load, clearing any
@@ -441,6 +470,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
+	case refreshTickMsg:
+		if !m.autoRefresh {
+			return m, nil // toggled off: stop ticking
+		}
+		if m.pending != nil || m.searching || m.detail != nil {
+			return m, m.refreshCmd() // defer the reload but keep the timer alive
+		}
+		nm, cmd := m.reloadCurrent()
+		return nm, tea.Batch(cmd, nm.(Model).refreshCmd())
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -510,6 +549,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case key.Matches(msg, m.keys.Help):
 		m.showHelp = true
+		return m, nil
+	case key.Matches(msg, m.keys.Follow):
+		m.autoRefresh = !m.autoRefresh
+		if m.autoRefresh {
+			return m, m.refreshCmd()
+		}
 		return m, nil
 	}
 	// View navigation works from ANY view, before per-view dispatch, so it is
