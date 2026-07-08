@@ -2,9 +2,14 @@ package transport
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
 	"time"
 )
 
@@ -68,7 +73,7 @@ func NewSSH(host string, opts ...Option) *SSHTransport {
 		o(s)
 	}
 	if !s.noMultiplex {
-		s.controlPath = defaultControlPath()
+		s.controlPath = controlPathFor(s.host, s.sshArgs)
 	}
 	if s.exec == nil {
 		s.exec = makeDefaultExec(s.maxOutput)
@@ -76,21 +81,82 @@ func NewSSH(host string, opts ...Option) *SSHTransport {
 	return s
 }
 
-// defaultControlPath returns an ssh ControlPath template in a private temp dir,
-// or "" if it can't be created or would exceed the platform's socket path
-// limit (macOS caps sun_path at ~104 bytes). The %C token is expanded by ssh to
-// a hash of (localhost, remotehost, port, user), so distinct boxes never share
-// a socket.
-func defaultControlPath() string {
-	dir := filepath.Join(os.TempDir(), "fire-ssh")
+// Unix-domain socket path budget. Getting this arithmetic wrong does not degrade
+// gracefully -- ssh dies with "unix_listener: path … too long for Unix domain
+// socket" and exits 255, so EVERY command reports the box unreachable.
+//
+// An earlier version used ssh's %C token and assumed it expanded to ~16 chars.
+// It expands to a 40-char SHA-1 hex digest. ssh then binds the master socket at
+// ControlPath + "." + 16 random chars before renaming it into place. On macOS,
+// os.TempDir() is already ~49 chars, so the real path reached 118 bytes against
+// a 104-byte limit. We now emit a fully-expanded path (no ssh tokens) so its
+// length is exactly knowable here.
+const (
+	// Darwin's sockaddr_un.sun_path is 104 bytes incl. NUL; Linux allows 108.
+	// Use the smaller so a path built on either platform is portable.
+	sunPathMax = 104
+	// ssh appends "." + 16 random chars while binding, then renames.
+	sshControlBindSuffix = 17
+	// Longest ControlPath we may hand ssh.
+	maxControlPathLen = sunPathMax - sshControlBindSuffix - 1 // -1 for the NUL
+)
+
+// defaultControlPath is the host-agnostic entry point (tests, and callers that
+// have no host yet).
+func defaultControlPath() string { return controlPathFor("", nil) }
+
+// controlPathFor returns a concrete ssh ControlPath for this destination, or ""
+// to disable multiplexing when no candidate directory yields a bindable path.
+//
+// Uniqueness comes from a digest of (host, sshArgs) rather than ssh's %C, so the
+// length is deterministic. Two boxes -- or the same box on a different port --
+// never share a socket.
+func controlPathFor(host string, sshArgs []string) string {
+	sum := sha256.Sum256([]byte(host + "\x00" + strings.Join(sshArgs, "\x00")))
+	name := "cm-" + hex.EncodeToString(sum[:])[:10]
+
+	for _, dir := range candidateControlDirs() {
+		path := filepath.Join(dir, name)
+		if len(path) > maxControlPathLen {
+			continue // try a shorter base before giving up on multiplexing
+		}
+		if !ensurePrivateDir(dir) {
+			continue
+		}
+		return path
+	}
+	return "" // degrade to no multiplexing; never to an unbindable path
+}
+
+// candidateControlDirs lists socket homes shortest-viable-last. $TMPDIR is
+// preferred (per-user and auto-cleaned), but on macOS it is long enough to blow
+// the sun_path budget, so /tmp/fire-ssh-<uid> is the fallback.
+func candidateControlDirs() []string {
+	return []string{
+		filepath.Join(os.TempDir(), "fire-ssh"),
+		filepath.Join("/tmp", "fire-ssh-"+strconv.Itoa(os.Getuid())),
+	}
+}
+
+// ensurePrivateDir creates dir 0700 and refuses to use one that already exists
+// but is not ours or is group/world-writable. /tmp is world-writable, so without
+// this check another user could pre-create the directory and have our ssh master
+// socket -- and therefore our authenticated session -- land inside it.
+func ensurePrivateDir(dir string) bool {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return ""
+		return false
 	}
-	path := filepath.Join(dir, "cm-%C")
-	if len(path)+16 > 100 { // %C expands to ~16 hex chars
-		return ""
+	fi, err := os.Lstat(dir)
+	if err != nil || !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+		return false
 	}
-	return path
+	if fi.Mode().Perm()&0o077 != 0 {
+		return false // group/world accessible
+	}
+	if st, ok := fi.Sys().(*syscall.Stat_t); ok && int(st.Uid) != os.Getuid() {
+		return false // someone else owns it
+	}
+	return true
 }
 
 // Host returns the ssh destination.
@@ -105,11 +171,42 @@ func (s *SSHTransport) Run(ctx context.Context, command string) (Result, error) 
 		defer cancel()
 	}
 	stdout, stderr, code, err := s.exec(ctx, "ssh", buildSSHArgs(s.host, s.sshArgs, s.controlPath, command)...)
+
+	// Containment. Connection multiplexing is an optimisation; it must never be
+	// the reason a command fails. If ssh refused because of the control socket --
+	// path too long, stale socket left by a killed master, a directory we cannot
+	// use -- fall back to a plain connection once. Slower beats broken.
+	if s.controlPath != "" && isControlSocketFailure(code, string(stderr)) {
+		stdout, stderr, code, err = s.exec(ctx, "ssh", buildSSHArgs(s.host, s.sshArgs, "", command)...)
+	}
+
 	return Result{
 		Stdout:   capString(string(stdout), s.maxOutput),
 		Stderr:   capString(string(stderr), s.maxOutput),
 		ExitCode: code,
 	}, err
+}
+
+// isControlSocketFailure reports whether ssh's failure is about the multiplexing
+// socket rather than the remote host or the command. ssh signals every one of
+// these with exit 255, indistinguishable from "host down" without reading stderr.
+func isControlSocketFailure(code int, stderr string) bool {
+	if code != 255 {
+		return false
+	}
+	for _, sig := range []string{
+		"too long for Unix domain socket", // path exceeded sun_path
+		"unix_listener",                   // could not bind the master socket
+		"ControlPath",                     // malformed / unusable path
+		"control socket",                  // stale or refused socket
+		"ControlSocket",                   // "… already exists, disabling multiplexing"
+		"multiplexing",
+	} {
+		if strings.Contains(stderr, sig) {
+			return true
+		}
+	}
+	return false
 }
 
 // buildSSHArgs assembles the ssh argument vector. It is a pure function so the
