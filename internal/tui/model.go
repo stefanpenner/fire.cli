@@ -248,7 +248,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
 
+	// List loads carry no view tag; the msg type identifies the view. A result
+	// that arrives after the user switched away is stale and dropped, so it
+	// cannot clobber the current view's state. See specs/TuiLoad.tla.
 	case devicesMsg:
+		if m.view != deviceView {
+			return m, nil
+		}
 		m.loading = false
 		m.err = msg.err
 		if msg.err == nil {
@@ -257,6 +263,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case rulesMsg:
+		if m.view != ruleView {
+			return m, nil
+		}
 		m.rulesLoading = false
 		m.err = msg.err
 		if msg.err == nil {
@@ -266,6 +275,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case alarmsMsg:
+		if m.view != alarmView {
+			return m, nil
+		}
 		m.alarmsLoading = false
 		m.err = msg.err
 		if msg.err == nil {
@@ -275,6 +287,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case networksMsg:
+		if m.view != networkView {
+			return m, nil
+		}
 		m.networksLoading = false
 		m.err = msg.err
 		if msg.err == nil {
@@ -284,6 +299,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case wansMsg:
+		if m.view != wanView {
+			return m, nil
+		}
 		m.wansLoading = false
 		m.err = msg.err
 		if msg.err == nil {
@@ -293,6 +311,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case dataMsg:
+		if m.view != dataView {
+			return m, nil
+		}
 		m.dataLoading = false
 		m.err = msg.err
 		if msg.err == nil {

@@ -42,7 +42,10 @@ func (p Peer) Bytes() int64 { return p.Upload + p.Download }
 // zsets whose members are JSON {domain|destIP|dstMac, port, fd} scored by
 // bytes. We pick the window with the greatest <end> (most recent 24h).
 func (c *Client) Traffic(ctx context.Context, mac string) ([]Peer, error) {
-	m := strings.ToUpper(mac)
+	m, err := normalizeMAC(mac)
+	if err != nil {
+		return nil, err
+	}
 	// sel <pattern> → the matching key with the greatest trailing :<end> ts.
 	// Internet patterns exclude the "local:" rollups (distinct key prefix).
 	script := `sel() { redis-cli --scan --pattern "$1" | awk -F: '{print $NF, $0}' | sort -rn | head -1 | cut -d" " -f2-; }; ` +

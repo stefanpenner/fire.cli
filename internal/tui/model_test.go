@@ -748,3 +748,35 @@ func TestBlock_EmptyListNoCrash(t *testing.T) {
 	_, cmd := m.Update(runeKey("b"))
 	assert.Nil(t, cmd, "block with no selectable device is a no-op")
 }
+
+// TestModel_DropsStaleCrossViewLoad proves the view-match guard (see
+// specs/TuiLoad.tla): a device load that completes after the user switched to
+// the rules view is dropped, so it cannot clobber the rules view's state.
+func TestModel_DropsStaleCrossViewLoad(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices()}
+	m := loaded(ds) // deviceView, devices delivered
+
+	nm, _ := m.Update(runeKey("2")) // switch to rules view (a rules load is now in flight)
+	rm := nm.(Model)
+	require.Equal(t, ruleView, rm.view)
+
+	// A stale device load (kicked off before the switch) completes with an error.
+	nm2, _ := rm.Update(devicesMsg{err: errors.New("stale dev load boom")})
+	sm := nm2.(Model)
+
+	assert.Equal(t, ruleView, sm.view, "must stay on the rules view")
+	assert.NoError(t, sm.err, "stale cross-view load must not set the current view's error")
+}
+
+// TestModel_AppliesCurrentViewLoad is the paired positive case: a load for the
+// current view is applied normally.
+func TestModel_AppliesCurrentViewLoad(t *testing.T) {
+	ds := &fakeDS{devices: sampleDevices()}
+	m := NewModel(ds, fixedNow)
+	m.width, m.height = 100, 30
+
+	nm, _ := m.Update(devicesMsg{devices: ds.devices})
+	sm := nm.(Model)
+	assert.False(t, sm.loading)
+	assert.Len(t, sm.devices, 3)
+}

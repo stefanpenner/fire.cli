@@ -49,6 +49,7 @@ type App struct {
 	Host    string
 	JSON    bool
 	NoColor bool
+	Timeout time.Duration
 }
 
 func (a *App) now() time.Time {
@@ -94,6 +95,7 @@ func NewRootCmd(app *App) *cobra.Command {
 	pf.StringVar(&app.Host, "host", "pi@fire.walla", "ssh destination of the Firewalla box")
 	pf.BoolVar(&app.JSON, "json", false, "output JSON instead of a table")
 	pf.BoolVar(&app.NoColor, "no-color", false, "disable colored output")
+	pf.DurationVar(&app.Timeout, "timeout", 30*time.Second, "abort a remote command if it runs longer than this (0 = no limit)")
 
 	root.AddCommand(
 		newVersionCmd(app),
@@ -121,7 +123,7 @@ func NewRootCmd(app *App) *cobra.Command {
 // (tests inject a fake, so this is a no-op there).
 func (a *App) connect(_ *cobra.Command, _ []string) error {
 	if a.Client == nil {
-		a.Client = firewalla.New(transport.NewSSH(a.Host))
+		a.Client = firewalla.New(transport.NewSSH(a.Host, transport.WithTimeout(a.Timeout)))
 	}
 	return nil
 }

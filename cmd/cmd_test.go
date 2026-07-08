@@ -199,9 +199,32 @@ func TestDNSDevice_PassesLimit(t *testing.T) {
 	}}
 	out, _, err := exec(t, client, "dns", "device", "aa:bb:cc:dd:ee:02", "--limit", "5")
 	require.NoError(t, err)
-	assert.Equal(t, "aa:bb:cc:dd:ee:02", client.gotMAC)
+	// A bare MAC resolves to its canonical upper-case form.
+	assert.Equal(t, "AA:BB:CC:DD:EE:02", client.gotMAC)
 	assert.Equal(t, 5, client.gotLimit)
 	assert.Contains(t, out, "broker.example.com")
+}
+
+// dns device accepts a name/IP like the other device commands, resolving it to
+// the device's MAC.
+func TestDNSDevice_ResolvesName(t *testing.T) {
+	client := &fakeClient{
+		devices: []firewalla.Device{{MAC: "AA:BB:CC:DD:EE:02", Name: "Example Phone", IP: "192.0.2.20"}},
+		dns:     []firewalla.DNSQuery{{Domain: "broker.example.com"}},
+	}
+	_, _, err := exec(t, client, "dns", "device", "Example Phone")
+	require.NoError(t, err)
+	assert.Equal(t, "AA:BB:CC:DD:EE:02", client.gotMAC)
+}
+
+// dns device rejects an unknown identifier with a helpful error, before any
+// query is issued.
+func TestDNSDevice_UnknownDevice(t *testing.T) {
+	client := &fakeClient{}
+	_, _, err := exec(t, client, "dns", "device", "nope")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no device matches")
+	assert.Empty(t, client.gotMAC)
 }
 
 func TestStatus(t *testing.T) {

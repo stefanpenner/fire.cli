@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,6 +19,21 @@ import (
 
 // deviceMarker delimits per-device hgetall blocks in the ListDevices stream.
 const deviceMarker = "@@DEVICE@@"
+
+// macPattern matches a colon-separated 6-octet hex MAC address.
+var macPattern = regexp.MustCompile(`^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$`)
+
+// normalizeMAC upper-cases and validates a MAC. It is the injection guard for
+// every client method that interpolates a MAC into a remote shell command:
+// a validated MAC contains only hex and colons, so it is shell-safe by
+// construction. Anything else is rejected before a command is built.
+func normalizeMAC(mac string) (string, error) {
+	m := strings.ToUpper(strings.TrimSpace(mac))
+	if !macPattern.MatchString(m) {
+		return "", fmt.Errorf("invalid MAC address %q (expected form AA:BB:CC:DD:EE:FF)", mac)
+	}
+	return m, nil
+}
 
 // Device is a host known to the Firewalla, distilled from a host:mac:* hash.
 type Device struct {
@@ -83,7 +99,11 @@ func (c *Client) DNSByDevice(ctx context.Context, mac string, limit int) ([]DNSQ
 	if limit <= 0 {
 		limit = 100
 	}
-	cmd := fmt.Sprintf("redis-cli zrevrange flow:dns:%s 0 %d", strings.ToUpper(mac), limit-1)
+	m, err := normalizeMAC(mac)
+	if err != nil {
+		return nil, err
+	}
+	cmd := fmt.Sprintf("redis-cli zrevrange flow:dns:%s 0 %d", m, limit-1)
 	res, err := c.t.Run(ctx, cmd)
 	if err != nil {
 		return nil, fmt.Errorf("reading dns flows for %s: %w", mac, err)

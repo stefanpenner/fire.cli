@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 	"github.com/stefanpenner/fire.cli/internal/firewalla"
@@ -31,7 +33,8 @@ func (app *App) runBlock(c *cobra.Command, args []string, v blockVerb, confirm b
 	if forDur > 0 {
 		action += fmt.Sprintf(" for %s", forDur)
 	}
-	if !app.confirmed(confirm, action) {
+	res := &mutationResult{Action: v.verb, Target: label, MAC: mac}
+	if !app.beginMutation(confirm, action, res) {
 		return nil
 	}
 	pid, err := app.Client.CreateRule(c.Context(), firewalla.RuleSpec{
@@ -42,8 +45,8 @@ func (app *App) runBlock(c *cobra.Command, args []string, v blockVerb, confirm b
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(app.Out, "%s %s (rule %s)\n", v.past, label, pid)
-	return nil
+	res.Rule = pid
+	return app.reportMutation(fmt.Sprintf("%s %s (rule %s)", v.past, label, pid), res)
 }
 
 // runUnblock removes a device's block rule(s). Shared by unblock and resume.
@@ -57,7 +60,8 @@ func (app *App) runUnblock(c *cobra.Command, args []string, v blockVerb, confirm
 		return nil // cancelled
 	}
 	label := idx.name(mac)
-	if !app.confirmed(confirm, fmt.Sprintf("%s %s (%s)", v.verb, label, mac)) {
+	res := &mutationResult{Action: v.verb, Target: label, MAC: mac}
+	if !app.beginMutation(confirm, fmt.Sprintf("%s %s (%s)", v.verb, label, mac), res) {
 		return nil
 	}
 	n, err := app.Client.DeleteMatching(c.Context(), firewalla.RuleSpec{
@@ -66,8 +70,8 @@ func (app *App) runUnblock(c *cobra.Command, args []string, v blockVerb, confirm
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(app.Out, "%s %s (removed %d rule(s))\n", v.past, label, n)
-	return nil
+	res.Count = &n
+	return app.reportMutation(fmt.Sprintf("%s %s (removed %d rule(s))", v.past, label, n), res)
 }
 
 func newBlockCmd(app *App) *cobra.Command {
@@ -140,10 +144,11 @@ func newResumeCmd(app *App) *cobra.Command {
 	return cmd
 }
 
-// capitalize upper-cases the first byte (ASCII verbs only).
+// capitalize upper-cases the first rune (UTF-8 safe; never byte-underflows).
 func capitalize(s string) string {
 	if s == "" {
 		return s
 	}
-	return string(s[0]-32) + s[1:]
+	r, size := utf8.DecodeRuneInString(s)
+	return string(unicode.ToUpper(r)) + s[size:]
 }

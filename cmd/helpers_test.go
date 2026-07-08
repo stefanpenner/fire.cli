@@ -46,6 +46,10 @@ func TestCapitalize(t *testing.T) {
 	assert.Equal(t, "", capitalize(""))
 	assert.Equal(t, "Block", capitalize("block"))
 	assert.Equal(t, "Pause", capitalize("pause"))
+	// Must not byte-underflow on a non-lowercase-ASCII first rune.
+	assert.Equal(t, "1x", capitalize("1x"))
+	assert.Equal(t, "Éa", capitalize("éa"))
+	assert.NotPanics(t, func() { capitalize("\x00x") })
 }
 
 func TestDeviceIndex_ResolveAndName(t *testing.T) {

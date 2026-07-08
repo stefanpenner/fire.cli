@@ -1,10 +1,16 @@
 package transport
 
 import (
-	"bytes"
 	"context"
 	"os/exec"
+	"time"
 )
+
+// defaultMaxOutput bounds how many bytes of stdout/stderr a single command may
+// produce before the rest is dropped. It guards against OOM on a hostile or
+// runaway keyspace (e.g. a huge `redis-cli --scan`). Generous enough that no
+// legitimate command is truncated.
+const defaultMaxOutput = 32 << 20 // 32 MiB
 
 // execRunner is the seam we mock in tests so SSHTransport.Run can be exercised
 // without a real ssh binary or network. It mirrors exec.CommandContext.
@@ -14,9 +20,11 @@ type execRunner func(ctx context.Context, name string, args ...string) (stdout, 
 // ssh client. Shelling out (rather than using x/crypto/ssh) means we inherit
 // the user's ssh config, keys, agent, and known_hosts for free.
 type SSHTransport struct {
-	host    string
-	sshArgs []string
-	exec    execRunner
+	host      string
+	sshArgs   []string
+	timeout   time.Duration // per-command wall-clock bound; 0 = none
+	maxOutput int           // cap on stdout/stderr bytes; <=0 = unlimited
+	exec      execRunner
 }
 
 // Option configures an SSHTransport.
@@ -28,11 +36,26 @@ func WithSSHArgs(args ...string) Option {
 	return func(s *SSHTransport) { s.sshArgs = append(s.sshArgs, args...) }
 }
 
+// WithTimeout bounds each command's total wall-clock time. Once it elapses the
+// context is canceled and Run returns promptly with an error instead of
+// hanging on a stalled box. 0 (the default) imposes no deadline.
+func WithTimeout(d time.Duration) Option {
+	return func(s *SSHTransport) { s.timeout = d }
+}
+
+// WithMaxOutput overrides the stdout/stderr byte cap. <=0 disables the cap.
+func WithMaxOutput(n int) Option {
+	return func(s *SSHTransport) { s.maxOutput = n }
+}
+
 // NewSSH creates an SSHTransport for the given ssh destination (e.g. "pi@fire").
 func NewSSH(host string, opts ...Option) *SSHTransport {
-	s := &SSHTransport{host: host, exec: defaultExec}
+	s := &SSHTransport{host: host, maxOutput: defaultMaxOutput}
 	for _, o := range opts {
 		o(s)
+	}
+	if s.exec == nil {
+		s.exec = makeDefaultExec(s.maxOutput)
 	}
 	return s
 }
@@ -40,10 +63,20 @@ func NewSSH(host string, opts ...Option) *SSHTransport {
 // Host returns the ssh destination.
 func (s *SSHTransport) Host() string { return s.host }
 
-// Run executes command on the remote host over ssh.
+// Run executes command on the remote host over ssh, bounded by the configured
+// timeout and output cap.
 func (s *SSHTransport) Run(ctx context.Context, command string) (Result, error) {
+	if s.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.timeout)
+		defer cancel()
+	}
 	stdout, stderr, code, err := s.exec(ctx, "ssh", buildSSHArgs(s.host, s.sshArgs, command)...)
-	return Result{Stdout: string(stdout), Stderr: string(stderr), ExitCode: code}, err
+	return Result{
+		Stdout:   capString(string(stdout), s.maxOutput),
+		Stderr:   capString(string(stderr), s.maxOutput),
+		ExitCode: code,
+	}, err
 }
 
 // buildSSHArgs assembles the ssh argument vector. It is a pure function so the
@@ -59,16 +92,60 @@ func buildSSHArgs(host string, extra []string, command string) []string {
 	return args
 }
 
-// defaultExec is the production execRunner backed by os/exec.
-func defaultExec(ctx context.Context, name string, args ...string) ([]byte, []byte, int, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	code := 0
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		code = exitErr.ExitCode()
+// makeDefaultExec builds the production execRunner backed by os/exec, capping
+// each stream to limit bytes so a runaway command can't balloon memory even
+// before Run truncates the result.
+func makeDefaultExec(limit int) execRunner {
+	return func(ctx context.Context, name string, args ...string) ([]byte, []byte, int, error) {
+		cmd := exec.CommandContext(ctx, name, args...)
+		stdout := &capWriter{limit: limit}
+		stderr := &capWriter{limit: limit}
+		cmd.Stdout = stdout
+		cmd.Stderr = stderr
+		err := cmd.Run()
+		code := 0
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			code = exitErr.ExitCode()
+		}
+		return stdout.Bytes(), stderr.Bytes(), code, err
 	}
-	return stdout.Bytes(), stderr.Bytes(), code, err
 }
+
+// capString truncates s to n bytes when n > 0.
+func capString(s string, n int) string {
+	if n > 0 && len(s) > n {
+		return s[:n]
+	}
+	return s
+}
+
+// capWriter is an io.Writer that retains at most limit bytes and drops the
+// rest, recording whether truncation occurred. It always reports the full
+// write length so the writing command does not see a short-write error.
+// limit <= 0 means unbounded.
+type capWriter struct {
+	buf       []byte
+	limit     int
+	truncated bool
+}
+
+func (w *capWriter) Write(p []byte) (int, error) {
+	if w.limit <= 0 {
+		w.buf = append(w.buf, p...)
+		return len(p), nil
+	}
+	if room := w.limit - len(w.buf); room > 0 {
+		if len(p) <= room {
+			w.buf = append(w.buf, p...)
+		} else {
+			w.buf = append(w.buf, p[:room]...)
+			w.truncated = true
+		}
+	} else if len(p) > 0 {
+		w.truncated = true
+	}
+	return len(p), nil
+}
+
+func (w *capWriter) Bytes() []byte  { return w.buf }
+func (w *capWriter) String() string { return string(w.buf) }
