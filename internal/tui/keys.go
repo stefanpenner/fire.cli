@@ -116,7 +116,7 @@ func (k KeyMap) SearchHelp() string {
 // FullHelp returns all bindings for the help modal as label/desc rows.
 func (k KeyMap) FullHelp() [][2]string {
 	return [][2]string{
-		{"↑/k, ↓/j", "Move selection"},
+		{"↑/k, ↓/j", "Move selection (or mouse wheel)"},
 		{"g / G", "Jump to top / bottom"},
 		{"tab / ⇧tab", "Next / previous view"},
 		{"h/l, ←/→", "Previous / next view"},

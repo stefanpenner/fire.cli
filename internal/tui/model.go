@@ -205,6 +205,10 @@ type Model struct {
 	// that arrive out of order under live auto-refresh. See specs/TuiLoad.tla.
 	loadGen [topView + 1]int
 
+	// prefetched is set once the other tabs have been kicked off in the
+	// background (after the first device load), so switching to them is instant.
+	prefetched bool
+
 	autoRefresh  bool          // live mode: periodically reload the current view
 	refreshEvery time.Duration // interval when autoRefresh is on
 
@@ -396,94 +400,127 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
 
+	case tea.MouseMsg:
+		// Mouse-wheel scrolls the active list (like otel-explorer). Overlays keep
+		// their own keys; the wheel just moves the underlying cursor.
+		if m.detail == nil && m.pending == nil && !m.showHelp {
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				m.moveCursor(-1)
+			case tea.MouseButtonWheelDown:
+				m.moveCursor(1)
+			}
+		}
+		return m, nil
+
 	// List loads carry no view tag; the msg type identifies the view. A result
 	// that arrives after the user switched away is stale and dropped, so it
 	// cannot clobber the current view's state. See specs/TuiLoad.tla.
 	case devicesMsg:
-		if !loadsm.Apply(int(deviceView), int(m.view), msg.gen, m.loadGen[deviceView]) {
-			return m, nil // stale (wrong view or superseded generation)
+		if !loadsm.Fresh(msg.gen, m.loadGen[deviceView]) {
+			return m, nil // superseded generation
 		}
 		m.loading = false
-		m.err = msg.err
 		if msg.err == nil {
 			m.loaded[deviceView] = true
-			m.setDevices(msg.devices)
+			m.devices = sortDevices(msg.devices, m.now())
+		}
+		if loadsm.Apply(int(deviceView), int(m.view), msg.gen, m.loadGen[deviceView]) {
+			m.err = msg.err
+			m.refilter()
+		}
+		// Once devices are in, prefetch the other tabs so switching is instant.
+		if msg.err == nil && !m.prefetched {
+			m.prefetched = true
+			return m, m.prefetchCmd()
 		}
 		return m, nil
 
 	case rulesMsg:
-		if !loadsm.Apply(int(ruleView), int(m.view), msg.gen, m.loadGen[ruleView]) {
+		if !loadsm.Fresh(msg.gen, m.loadGen[ruleView]) {
 			return m, nil
 		}
 		m.rulesLoading = false
-		m.err = msg.err
 		if msg.err == nil {
 			m.loaded[ruleView] = true
 			m.rules = msg.rules
+		}
+		if loadsm.Apply(int(ruleView), int(m.view), msg.gen, m.loadGen[ruleView]) {
+			m.err = msg.err
 			m.refilter()
 		}
 		return m, nil
 
 	case alarmsMsg:
-		if !loadsm.Apply(int(alarmView), int(m.view), msg.gen, m.loadGen[alarmView]) {
+		if !loadsm.Fresh(msg.gen, m.loadGen[alarmView]) {
 			return m, nil
 		}
 		m.alarmsLoading = false
-		m.err = msg.err
 		if msg.err == nil {
 			m.loaded[alarmView] = true
 			m.alarms = msg.alarms
+		}
+		if loadsm.Apply(int(alarmView), int(m.view), msg.gen, m.loadGen[alarmView]) {
+			m.err = msg.err
 			m.refilter()
 		}
 		return m, nil
 
 	case networksMsg:
-		if !loadsm.Apply(int(networkView), int(m.view), msg.gen, m.loadGen[networkView]) {
+		if !loadsm.Fresh(msg.gen, m.loadGen[networkView]) {
 			return m, nil
 		}
 		m.networksLoading = false
-		m.err = msg.err
 		if msg.err == nil {
 			m.loaded[networkView] = true
 			m.networks = msg.networks
+		}
+		if loadsm.Apply(int(networkView), int(m.view), msg.gen, m.loadGen[networkView]) {
+			m.err = msg.err
 			m.refilter()
 		}
 		return m, nil
 
 	case wansMsg:
-		if !loadsm.Apply(int(wanView), int(m.view), msg.gen, m.loadGen[wanView]) {
+		if !loadsm.Fresh(msg.gen, m.loadGen[wanView]) {
 			return m, nil
 		}
 		m.wansLoading = false
-		m.err = msg.err
 		if msg.err == nil {
 			m.loaded[wanView] = true
 			m.wans = msg.wans
+		}
+		if loadsm.Apply(int(wanView), int(m.view), msg.gen, m.loadGen[wanView]) {
+			m.err = msg.err
 			m.refilter()
 		}
 		return m, nil
 
 	case dataMsg:
-		if !loadsm.Apply(int(dataView), int(m.view), msg.gen, m.loadGen[dataView]) {
+		if !loadsm.Fresh(msg.gen, m.loadGen[dataView]) {
 			return m, nil
 		}
 		m.dataLoading = false
-		m.err = msg.err
 		if msg.err == nil {
 			m.loaded[dataView] = true
 			m.data, m.dataNames = msg.report, msg.names
 		}
+		if loadsm.Apply(int(dataView), int(m.view), msg.gen, m.loadGen[dataView]) {
+			m.err = msg.err
+		}
 		return m, nil
 
 	case topMsg:
-		if !loadsm.Apply(int(topView), int(m.view), msg.gen, m.loadGen[topView]) {
+		if !loadsm.Fresh(msg.gen, m.loadGen[topView]) {
 			return m, nil
 		}
 		m.topLoading = false
-		m.err = msg.err
 		if msg.err == nil {
 			m.loaded[topView] = true
 			m.topTalkers = msg.talkers
+		}
+		if loadsm.Apply(int(topView), int(m.view), msg.gen, m.loadGen[topView]) {
+			m.err = msg.err
 			m.refilter()
 		}
 		return m, nil
@@ -1111,9 +1148,8 @@ func (m Model) selectedTopTalker() (firewalla.TopTalker, bool) {
 	return firewalla.TopTalker{}, false
 }
 
-// setDevices sorts (online first, then most-recently-active) and reindexes.
-func (m *Model) setDevices(devs []firewalla.Device) {
-	now := m.now()
+// sortDevices orders devices online-first, then most-recently-active.
+func sortDevices(devs []firewalla.Device, now time.Time) []firewalla.Device {
 	sort.SliceStable(devs, func(i, j int) bool {
 		oi, oj := devs[i].SeenWithin(onlineWindow, now), devs[j].SeenWithin(onlineWindow, now)
 		if oi != oj {
@@ -1121,8 +1157,34 @@ func (m *Model) setDevices(devs []firewalla.Device) {
 		}
 		return devs[i].LastActive.After(devs[j].LastActive)
 	})
-	m.devices = devs
-	m.refilter()
+	return devs
+}
+
+// prefetchCmd kicks off a background load for every not-yet-loaded view (each
+// at its current generation), so the first switch to any tab shows cached data
+// instantly. Responses cache off-view via the store/display split in Update.
+func (m Model) prefetchCmd() tea.Cmd {
+	var cmds []tea.Cmd
+	for _, v := range viewOrder {
+		if v == deviceView || m.loaded[v] {
+			continue
+		}
+		switch v {
+		case ruleView:
+			cmds = append(cmds, m.loadRulesCmd(m.loadGen[ruleView]))
+		case alarmView:
+			cmds = append(cmds, m.loadAlarmsCmd(m.loadGen[alarmView]))
+		case networkView:
+			cmds = append(cmds, m.loadNetworksCmd(m.loadGen[networkView]))
+		case wanView:
+			cmds = append(cmds, m.loadWansCmd(m.loadGen[wanView]))
+		case dataView:
+			cmds = append(cmds, m.loadDataCmd(m.loadGen[dataView]))
+		case topView:
+			cmds = append(cmds, m.loadTopCmd(m.loadGen[topView]))
+		}
+	}
+	return tea.Batch(cmds...)
 }
 
 // refilter recomputes the active view's visible indices from the current

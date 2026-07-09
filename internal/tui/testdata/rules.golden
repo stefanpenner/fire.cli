@@ -1,9 +1,9 @@
 ╭── 🔥 fire ───────────────────────────────────────────────────────────────────╮
-│ rules (2)                                                                    │
-│  devices │ rules │ alarms │ networks │ wan │ data │ top                      │
+│  devices │ rules 2 │ alarms │ networks │ wan │ data │ top                    │
 │                                                                              │
 │ ❯ on  10     block  dns       ads.example.net                                │
 │   off 11     allow  mac       AA:BB:CC:DD:EE:01                              │
+│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │

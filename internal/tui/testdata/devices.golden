@@ -1,6 +1,6 @@
 ╭── 🔥 fire ───────────────────────────────────────────────────────────────────╮
 │ pi@test   3 devices • 2 online                                               │
-│  devices │ rules │ alarms │ networks │ wan │ data │ top                      │
+│  devices 3 │ rules │ alarms │ networks │ wan │ data │ top                    │
 │                                                                              │
 │ ❯ ● Old Laptop                    192.0.2.30       AA:BB:CC:DD:EE:03         │
 │   ● Example Phone                 192.0.2.10       AA:BB:CC:DD:EE:01         │

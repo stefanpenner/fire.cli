@@ -16,3 +16,13 @@ package loadsm
 func Apply(msgView, curView, msgGen, curGen int) bool {
 	return msgView == curView && msgGen == curGen
 }
+
+// Fresh reports whether a response is its view's latest generation (not
+// superseded), regardless of which view is showing. The TUI uses it to decide
+// whether to *cache* a load — including one prefetched for a tab the user is
+// not on yet, so switching to it is instant. Caching an off-view load does not
+// change what is displayed, so it is neutral to the Coherent property that
+// Apply (the display guard) upholds; Apply == (msgView == curView) && Fresh.
+func Fresh(msgGen, curGen int) bool {
+	return msgGen == curGen
+}

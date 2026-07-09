@@ -1,9 +1,9 @@
 ╭── 🔥 fire ───────────────────────────────────────────────────────────────────╮
-│ wan (2)                                                                      │
-│  devices │ rules │ alarms │ networks │ wan │ data │ top                      │
+│  devices │ rules │ alarms │ networks │ wan 2 │ data │ top                    │
 │                                                                              │
 │ ❯ ● ISP-A            eth0     primary   healthy                              │
 │     ISP-B            eth3     standby   down                                 │
+│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
