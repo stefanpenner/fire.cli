@@ -18,7 +18,7 @@ func viewOf(t *testing.T, m tea.Model) viewMode {
 // Tab / →/ l cycle forward through the six views and wrap.
 func TestNav_NextTabCyclesAndWraps(t *testing.T) {
 	m := loaded(&fakeDS{devices: sampleDevices()})
-	order := []viewMode{ruleView, alarmView, networkView, wanView, dataView, deviceView}
+	order := []viewMode{ruleView, alarmView, networkView, wanView, dataView, topView, deviceView}
 	cur := tea.Model(m)
 	for _, want := range order {
 		nm, _ := cur.(Model).Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -31,10 +31,10 @@ func TestNav_NextTabCyclesAndWraps(t *testing.T) {
 func TestNav_PrevTabWraps(t *testing.T) {
 	m := loaded(&fakeDS{devices: sampleDevices()})
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	assert.Equal(t, dataView, viewOf(t, nm), "prev from devices wraps to data")
+	assert.Equal(t, topView, viewOf(t, nm), "prev from devices wraps to the last tab")
 
 	nm2, _ := nm.(Model).Update(runeKey("h"))
-	assert.Equal(t, wanView, viewOf(t, nm2), "h goes prev")
+	assert.Equal(t, dataView, viewOf(t, nm2), "h goes prev")
 }
 
 // l / right also go forward.

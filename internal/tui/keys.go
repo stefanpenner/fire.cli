@@ -78,6 +78,11 @@ func (k KeyMap) DataHelp() string {
 	return "tab views • r reload • esc devices • q quit"
 }
 
+// TopHelp is the one-line footer help shown in the top-talkers view.
+func (k KeyMap) TopHelp() string {
+	return "↑↓ nav • enter detail • / search • s sort • tab views • r reload • esc devices • q quit"
+}
+
 // NetworksHelp is the one-line footer help shown in the networks view.
 func (k KeyMap) NetworksHelp() string {
 	return "↑↓ nav • enter detail • / search • s sort • tab views • r reload • esc devices • q quit"
@@ -115,7 +120,7 @@ func (k KeyMap) FullHelp() [][2]string {
 		{"g / G", "Jump to top / bottom"},
 		{"tab / ⇧tab", "Next / previous view"},
 		{"h/l, ←/→", "Previous / next view"},
-		{"1–6", "Jump to a view (devices…data)"},
+		{"1–7", "Jump to a view (devices…top)"},
 		{"enter", "Open detail for the selected item"},
 		{"/", "Search / filter the current list"},
 		{"s", "Cycle sort (default ↔ by name)"},

@@ -53,8 +53,8 @@ fire redis keys 'policy:*'            # escape hatch: raw redis-cli on the box
 ### Interactive dashboard
 
 `fire tui` (or just `fire` in a terminal) opens a Bubble Tea dashboard with a
-tab bar across six views — **devices │ rules │ alarms │ networks │ wan │ data** —
-switched with `R`/`A`/`N`/`W`/`D`, the number keys `1`–`6`, or `esc` back to
+tab bar across seven views — **devices │ rules │ alarms │ networks │ wan │ data
+│ top** — switched with `tab`, the number keys `1`–`7`, or `esc` back to
 devices. Navigate any list with ↑/↓ (or `j`/`k`, `g`/`G`); `r` reloads, `?`
 shows help, `q` quits. Every mutation is confirmed with `y` (`n`/`esc` cancels),
 mirroring the CLI's `--confirm` gate. A load that finishes after you switch
@@ -76,6 +76,8 @@ the current view reloads in the background on the interval.
 - **data** — data-plan usage with a gauge (charmbracelet `bubbles/progress`)
   and per-WAN bars; the device detail pane charts a device's top traffic peers.
   Bars use block glyphs so they stay legible under `NO_COLOR`.
+- **top** — devices ranked by bandwidth as a horizontal bar chart (the same
+  data as `fire top`), with `/` search and `enter` for detail.
 
 ### Pickers everywhere
 

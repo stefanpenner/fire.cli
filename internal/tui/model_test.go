@@ -21,6 +21,8 @@ type fakeDS struct {
 	networks    []firewalla.Network
 	wans        []firewalla.WAN
 	data        firewalla.DataUsageReport
+	topTalkers  []firewalla.TopTalker
+	topErr      error
 	listErr     error
 	trafficErr  error
 	createErr   error
@@ -81,6 +83,9 @@ func (f *fakeDS) ListWANs(context.Context) ([]firewalla.WAN, error) {
 }
 func (f *fakeDS) DataUsage(context.Context) (firewalla.DataUsageReport, error) {
 	return f.data, f.dataErr
+}
+func (f *fakeDS) TopTalkers(context.Context) ([]firewalla.TopTalker, error) {
+	return f.topTalkers, f.topErr
 }
 func (f *fakeDS) CreateRule(_ context.Context, spec firewalla.RuleSpec) (string, error) {
 	f.gotSpec, f.createCnt = spec, f.createCnt+1

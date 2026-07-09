@@ -58,6 +58,10 @@ func goldenDS() *fakeDS {
 			ResetDay:  1,
 			WANs:      []firewalla.WANUsage{{UUID: "u-1", Upload: 1024, Download: 1048576}},
 		},
+		topTalkers: []firewalla.TopTalker{
+			{MAC: "AA:BB:CC:DD:EE:01", Download: 4200000000, Upload: 120000000},
+			{MAC: "AA:BB:CC:DD:EE:02", Download: 1100000000, Upload: 30000000},
+		},
 	}
 }
 
@@ -85,6 +89,7 @@ func TestGolden_Views(t *testing.T) {
 		{"networks", "4", networksMsg{networks: ds.networks}},
 		{"wan", "5", wansMsg{wans: ds.wans}},
 		{"data", "6", dataMsg{report: ds.data, names: map[string]string{"u-1": "ISP-A"}}},
+		{"top", "7", topMsg{talkers: ds.topTalkers}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
