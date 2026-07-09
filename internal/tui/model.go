@@ -286,6 +286,7 @@ func (m Model) cycleView(delta int) (tea.Model, tea.Cmd) {
 func (m Model) anyLoading() bool {
 	return m.loading || m.rulesLoading || m.alarmsLoading ||
 		m.networksLoading || m.wansLoading || m.dataLoading ||
+		m.autoRefresh || // keep the spinner alive so live mode shows activity
 		(m.detail != nil && m.detail.loading)
 }
 

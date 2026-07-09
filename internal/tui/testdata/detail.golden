@@ -1,15 +1,24 @@
-Old Laptop  online
-
-  ip         192.0.2.30
-  mac        AA:BB:CC:DD:EE:03
-  vendor     —
-  type       —
-  last seen  5s ago
-
-  Top traffic
-  video.example.com        ████████████████  ↓400.0 KB ↑2.0 KB
-  AA:BB:CC:DD:EE:02        ░░░░░░░░░░░░░░░░  ↓1.0 KB ↑0 B
-
-  Rules
-  none
- NORMAL                                 b block • u unblock • esc back • q close
+╭── 🔥 fire ───────────────────────────────────────────────────────────────────╮
+│ Old Laptop  online                                                           │
+│                                                                              │
+│   ip         192.0.2.30                                                      │
+│   mac        AA:BB:CC:DD:EE:03                                               │
+│   vendor     —                                                               │
+│   type       —                                                               │
+│   last seen  5s ago                                                          │
+│                                                                              │
+│   Top traffic                                                                │
+│   video.example.com        ████████████████  ↓400.0 KB ↑2.0 KB               │
+│   AA:BB:CC:DD:EE:02        ░░░░░░░░░░░░░░░░  ↓1.0 KB ↑0 B                    │
+│                                                                              │
+│   Rules                                                                      │
+│   none                                                                       │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│  NORMAL                             b block • u unblock • esc back • q close │
+╰──────────────────────────────────────────────────────────────────────────────╯

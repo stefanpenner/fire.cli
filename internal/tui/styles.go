@@ -19,6 +19,7 @@ type Styles struct {
 	TabActive   lipgloss.Style
 	TabInactive lipgloss.Style
 	ModePill    lipgloss.Style
+	Border      lipgloss.Style // the outer frame
 }
 
 // Tokyo Night palette, matching stefanpenner/otel-explorer so the two tools
@@ -33,6 +34,7 @@ const (
 	tnPurple  = lipgloss.Color("#bb9af7")
 	tnSelBg   = lipgloss.Color("#283457")
 	tnSurface = lipgloss.Color("#1a1b26")
+	tnGrayDim = lipgloss.Color("#3b4261")
 )
 
 // PlainStyles returns a no-color style set for NO_COLOR / non-color terminals.
@@ -57,6 +59,7 @@ func PlainStyles() Styles {
 		TabActive:   reverse,
 		TabInactive: plain,
 		ModePill:    bold,
+		Border:      plain,
 	}
 }
 
@@ -77,5 +80,6 @@ func DefaultStyles() Styles {
 		TabActive:   lipgloss.NewStyle().Bold(true).Foreground(tnSurface).Background(tnBlue),
 		TabInactive: lipgloss.NewStyle().Foreground(tnGray),
 		ModePill:    lipgloss.NewStyle().Bold(true).Foreground(tnSurface).Background(tnPurple),
+		Border:      lipgloss.NewStyle().Foreground(tnGrayDim),
 	}
 }
