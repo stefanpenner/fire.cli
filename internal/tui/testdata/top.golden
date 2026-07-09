@@ -1,9 +1,9 @@
 ╭── 🔥 fire ───────────────────────────────────────────────────────────────────╮
-│ alarms (2)                                                                   │
+│ top talkers (2)                                                              │
 │  devices │ rules │ alarms │ networks │ wan │ data │ top                      │
 │                                                                              │
-│ ❯ 2297     50s ago   Port Scan          Laptop scanned ports                 │
-│   55       1m ago    New Device         Phone                                │
+│ ❯ Example Phone          ██████████████████  4.0 GB                          │
+│   Example Hot Tub        █████░░░░░░░░░░░░░  1.1 GB                          │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -20,5 +20,5 @@
 │                                                                              │
 │                                                                              │
 │                                                                              │
-│  NORMAL  ↑↓ nav • enter detail • / search • s sort • a archive • x delete •… │
+│  NORMAL  ↑↓ nav • enter detail • / search • s sort • tab views • r reload •… │
 ╰──────────────────────────────────────────────────────────────────────────────╯

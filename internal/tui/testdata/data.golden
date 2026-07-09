@@ -1,6 +1,6 @@
 ╭── 🔥 fire ───────────────────────────────────────────────────────────────────╮
 │ data usage                                                                   │
-│  devices │ rules │ alarms │ networks │ wan │ data                            │
+│  devices │ rules │ alarms │ networks │ wan │ data │ top                      │
 │                                                                              │
 │   1.0 MB of 931.3 GB plan  (0.0%), resets day 1                              │
 │   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░                                   │

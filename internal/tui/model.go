@@ -37,6 +37,7 @@ type DataSource interface {
 	ListNetworks(ctx context.Context) ([]firewalla.Network, error)
 	ListWANs(ctx context.Context) ([]firewalla.WAN, error)
 	DataUsage(ctx context.Context) (firewalla.DataUsageReport, error)
+	TopTalkers(ctx context.Context) ([]firewalla.TopTalker, error)
 }
 
 // alarmViewLimit caps how many alarms the alarms view loads.
@@ -52,6 +53,7 @@ const (
 	networkView
 	wanView
 	dataView
+	topView
 )
 
 // sortMode selects a view's ordering. 0 is always the view's natural order
@@ -116,6 +118,13 @@ type dataMsg struct {
 	gen    int
 }
 
+// topMsg carries the result of a top-talkers (re)load.
+type topMsg struct {
+	talkers []firewalla.TopTalker
+	err     error
+	gen     int
+}
+
 // actionMsg carries the result of a confirmed mutation.
 type actionMsg struct {
 	text string
@@ -155,8 +164,8 @@ type Model struct {
 	// shares this so search (/) and sort (s) work identically everywhere.
 	visible    []int
 	cursor     int
-	onlineOnly bool                   // devices: hide offline
-	sortMode   [dataView + 1]sortMode // per-view sort selection
+	onlineOnly bool                  // devices: hide offline
+	sortMode   [topView + 1]sortMode // per-view sort selection
 
 	devices []firewalla.Device // pre-sorted: online first, then most-recent
 
@@ -176,6 +185,9 @@ type Model struct {
 	dataNames   map[string]string
 	dataLoading bool
 
+	topTalkers []firewalla.TopTalker
+	topLoading bool
+
 	search    textinput.Model
 	searching bool
 	spinner   spinner.Model
@@ -185,13 +197,13 @@ type Model struct {
 	// loaded[v] is true once view v has fetched at least once, so revisiting a
 	// tab shows cached data instantly and only refreshes in the background
 	// (stale-while-revalidate) instead of blanking to a spinner every time.
-	loaded [dataView + 1]bool
+	loaded [topView + 1]bool
 
 	// loadGen[v] is the latest load generation issued for view v. Every load is
 	// stamped with the generation at issue time; a response is applied only if
 	// it is still the latest (loadsm.Apply). This drops stale same-view loads
 	// that arrive out of order under live auto-refresh. See specs/TuiLoad.tla.
-	loadGen [dataView + 1]int
+	loadGen [topView + 1]int
 
 	autoRefresh  bool          // live mode: periodically reload the current view
 	refreshEvery time.Duration // interval when autoRefresh is on
@@ -265,7 +277,7 @@ func (m Model) WithColor(enabled bool) Model {
 
 // viewOrder is the left-to-right tab order, shared by the tab bar and the
 // tab-cycling navigation (tab/⇧tab, h/l, ←/→).
-var viewOrder = []viewMode{deviceView, ruleView, alarmView, networkView, wanView, dataView}
+var viewOrder = []viewMode{deviceView, ruleView, alarmView, networkView, wanView, dataView, topView}
 
 // cycleView moves delta tabs from the current view, wrapping around, and
 // switches to it.
@@ -285,7 +297,7 @@ func (m Model) cycleView(delta int) (tea.Model, tea.Cmd) {
 // Drives the spinner: it only animates while something is in flight.
 func (m Model) anyLoading() bool {
 	return m.loading || m.rulesLoading || m.alarmsLoading ||
-		m.networksLoading || m.wansLoading || m.dataLoading ||
+		m.networksLoading || m.wansLoading || m.dataLoading || m.topLoading ||
 		m.autoRefresh || // keep the spinner alive so live mode shows activity
 		(m.detail != nil && m.detail.loading)
 }
@@ -353,6 +365,9 @@ func (m Model) switchTo(v viewMode) (tea.Model, tea.Cmd) {
 	case dataView:
 		m.dataLoading = fresh
 		cmd = m.loadDataCmd(m.loadGen[dataView])
+	case topView:
+		m.topLoading = fresh
+		cmd = m.loadTopCmd(m.loadGen[topView])
 	default:
 		m.loading = fresh
 		cmd = m.loadCmd(m.loadGen[deviceView])
@@ -457,6 +472,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.loaded[dataView] = true
 			m.data, m.dataNames = msg.report, msg.names
+		}
+		return m, nil
+
+	case topMsg:
+		if !loadsm.Apply(int(topView), int(m.view), msg.gen, m.loadGen[topView]) {
+			return m, nil
+		}
+		m.topLoading = false
+		m.err = msg.err
+		if msg.err == nil {
+			m.loaded[topView] = true
+			m.topTalkers = msg.talkers
+			m.refilter()
 		}
 		return m, nil
 
@@ -616,6 +644,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.switchTo(wanView)
 	case "6":
 		return m.switchTo(dataView)
+	case "7":
+		return m.switchTo(topView)
 	}
 
 	// dataView is a summary, not a scrollable list: only reload/esc apply.
@@ -711,6 +741,9 @@ func (m Model) reloadCurrent() (tea.Model, tea.Cmd) {
 	case dataView:
 		m.dataLoading = m.data.PlanTotal == 0 && len(m.data.WANs) == 0
 		cmd = m.loadDataCmd(g)
+	case topView:
+		m.topLoading = len(m.topTalkers) == 0
+		cmd = m.loadTopCmd(g)
 	default:
 		m.loading = len(m.devices) == 0
 		cmd = m.loadCmd(g)
@@ -743,6 +776,10 @@ func (m Model) openSelectedDetail() (tea.Model, tea.Cmd) {
 	case wanView:
 		if w, ok := m.selectedWAN(); ok {
 			return m.openDetail("wan "+w.Name, m.wanFields(w))
+		}
+	case topView:
+		if t, ok := m.selectedTopTalker(); ok {
+			return m.openDetail("top "+m.talkerName(t.MAC), topFields(t))
 		}
 	}
 	return m, nil
@@ -1051,8 +1088,27 @@ func (m Model) loadDataCmd(gen int) tea.Cmd {
 				}
 			}
 		}
-		return dataMsg{report: report, names: names}
+		return dataMsg{report: report, names: names, gen: gen}
 	}
+}
+
+// ---- top-talkers view ----
+
+// loadTopCmd fetches the bandwidth ranking off the UI goroutine.
+func (m Model) loadTopCmd(gen int) tea.Cmd {
+	ds := m.ds
+	return func() tea.Msg {
+		talkers, err := ds.TopTalkers(context.Background())
+		return topMsg{talkers: talkers, err: err, gen: gen}
+	}
+}
+
+// selectedTopTalker returns the ranked device under the cursor.
+func (m Model) selectedTopTalker() (firewalla.TopTalker, bool) {
+	if i, ok := m.selIndex(); ok && m.view == topView && i < len(m.topTalkers) {
+		return m.topTalkers[i], true
+	}
+	return firewalla.TopTalker{}, false
 }
 
 // setDevices sorts (online first, then most-recently-active) and reindexes.
@@ -1108,6 +1164,13 @@ func (m *Model) refilter() {
 			w := m.wans[i]
 			return strings.ToLower(w.Name + " " + w.Interface + " " + w.Role)
 		}
+	case topView:
+		n = len(m.topTalkers)
+		label = func(i int) string { return m.talkerName(m.topTalkers[i].MAC) }
+		text = func(i int) string {
+			t := m.topTalkers[i]
+			return strings.ToLower(t.MAC + " " + m.talkerName(t.MAC))
+		}
 	case dataView:
 		n = 0 // a summary, not a list
 		label, text = func(int) string { return "" }, func(int) string { return "" }
@@ -1161,6 +1224,17 @@ func (m Model) SelectedDevice() (firewalla.Device, bool) {
 		return firewalla.Device{}, false
 	}
 	return m.devices[m.visible[m.cursor]], true
+}
+
+// talkerName resolves a MAC to its friendly device name (from the already-
+// loaded device list), falling back to the MAC.
+func (m Model) talkerName(mac string) string {
+	for _, d := range m.devices {
+		if strings.EqualFold(d.MAC, mac) {
+			return deviceLabel(d)
+		}
+	}
+	return mac
 }
 
 // deviceLabel is the friendly display name, falling back to IP then MAC.

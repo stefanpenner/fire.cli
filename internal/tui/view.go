@@ -53,6 +53,8 @@ func (m Model) renderBody() string {
 		return m.wansView()
 	case dataView:
 		return m.dataUsageView()
+	case topView:
+		return m.topView()
 	}
 	var b strings.Builder
 	b.WriteString(m.headerView())
@@ -126,6 +128,7 @@ func (m Model) tabBar() string {
 		{networkView, "networks"},
 		{wanView, "wan"},
 		{dataView, "data"},
+		{topView, "top"},
 	}
 	parts := make([]string, len(tabs))
 	for i, t := range tabs {
@@ -726,6 +729,62 @@ func (m Model) dataUsageView() string {
 	b.WriteString("\n")
 	b.WriteString(m.viewFooter(m.keys.DataHelp()))
 	return b.String()
+}
+
+// topView renders the bandwidth ranking as a horizontal bar chart.
+func (m Model) topView() string {
+	var b strings.Builder
+	b.WriteString(m.viewHeader(fmt.Sprintf("  top talkers (%d)", len(m.topTalkers))))
+	b.WriteString("\n\n")
+
+	switch {
+	case m.topLoading && len(m.topTalkers) == 0:
+		b.WriteString(m.loadingLine())
+	case m.err != nil:
+		b.WriteString(m.styles.ErrText.Render("  error: " + m.err.Error()))
+	case len(m.topTalkers) == 0:
+		b.WriteString(m.styles.Subtle.Render("  no traffic data"))
+	case len(m.visible) == 0:
+		b.WriteString(m.styles.Subtle.Render("  no devices match the filter"))
+	default:
+		var peak int64 = 1
+		for _, t := range m.topTalkers {
+			if t.Bytes() > peak {
+				peak = t.Bytes()
+			}
+		}
+		b.WriteString(m.listBody(4, func(i int, sel bool) string {
+			return m.topRow(m.topTalkers[i], peak, sel)
+		}))
+	}
+
+	b.WriteString(m.searchLine())
+	b.WriteString("\n")
+	b.WriteString(m.viewFooter(m.keys.TopHelp()))
+	return b.String()
+}
+
+func (m Model) topRow(t firewalla.TopTalker, peak int64, selected bool) string {
+	name := truncate(m.talkerName(t.MAC), 22)
+	nameCell := fmt.Sprintf("%-22s", name)
+	cursor := "  "
+	if selected {
+		cursor = m.styles.Title.Render("❯ ")
+		nameCell = m.styles.Selected.Render(nameCell)
+	}
+	return cursor + nameCell + " " +
+		m.bar(float64(t.Bytes())/float64(peak), 18, m.styles.Online) +
+		"  " + humanizeBytes(t.Bytes())
+}
+
+// topFields is the detail-pane field list for a ranked device.
+func topFields(t firewalla.TopTalker) [][2]string {
+	return [][2]string{
+		{"mac", t.MAC},
+		{"download", humanizeBytes(t.Download)},
+		{"upload", humanizeBytes(t.Upload)},
+		{"total", humanizeBytes(t.Bytes())},
+	}
 }
 
 func (m Model) helpView() string {
