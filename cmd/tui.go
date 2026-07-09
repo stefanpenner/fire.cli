@@ -37,7 +37,7 @@ func (app *App) runTUI(interval time.Duration) error {
 	m := tui.NewModel(tuiSource{app.Client}, app.now).
 		WithColor(render.ColorEnabled(app.Out, app.NoColor)).
 		WithRefresh(interval)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	return err
 }

@@ -132,19 +132,45 @@ func (m Model) tabBar() string {
 	}
 	parts := make([]string, len(tabs))
 	for i, t := range tabs {
-		style := m.styles.TabInactive
+		label := t.label
 		if t.v == m.view {
-			style = m.styles.TabActive
+			// The active tab carries the count, so it isn't repeated as a
+			// redundant label above the tab bar.
+			if c := m.viewCount(t.v); c >= 0 {
+				label = fmt.Sprintf("%s %d", t.label, c)
+			}
+			parts[i] = m.styles.TabActive.Render(" " + label + " ")
+		} else {
+			parts[i] = m.styles.TabInactive.Render(" " + label + " ")
 		}
-		parts[i] = style.Render(" " + t.label + " ")
 	}
 	return strings.Join(parts, m.styles.TabInactive.Render("│"))
 }
 
-// viewHeader renders a non-device view's context line plus the tab bar. The
-// "🔥 fire" title lives on the frame border, so it is not repeated here.
-func (m Model) viewHeader(suffix string) string {
-	return m.styles.Subtle.Render(strings.TrimLeft(suffix, " ")) + "\n" + m.tabBar()
+// viewCount is the number of items in view v (for the active-tab badge), or -1
+// when the view has no meaningful count (the data-usage summary).
+func (m Model) viewCount(v viewMode) int {
+	switch v {
+	case ruleView:
+		return len(m.rules)
+	case alarmView:
+		return len(m.alarms)
+	case networkView:
+		return len(m.networks)
+	case wanView:
+		return len(m.wans)
+	case topView:
+		return len(m.topTalkers)
+	case deviceView:
+		return len(m.devices)
+	}
+	return -1 // dataView
+}
+
+// viewHeader renders a non-device view's tab bar. The view name is shown by the
+// highlighted tab (with its count), so no separate name line is printed.
+func (m Model) viewHeader() string {
+	return m.tabBar()
 }
 
 func (m Model) headerView() string {
@@ -499,7 +525,7 @@ func (m Model) searchLine() string {
 // rulesView renders the firewall-rules list.
 func (m Model) rulesView() string {
 	var b strings.Builder
-	b.WriteString(m.viewHeader(fmt.Sprintf("  rules (%d)", len(m.rules))))
+	b.WriteString(m.viewHeader())
 	b.WriteString("\n\n")
 
 	switch {
@@ -540,7 +566,7 @@ func (m Model) ruleRow(r firewalla.Rule, selected bool) string {
 // alarmsView renders the recent-alarms list.
 func (m Model) alarmsView() string {
 	var b strings.Builder
-	b.WriteString(m.viewHeader(fmt.Sprintf("  alarms (%d)", len(m.alarms))))
+	b.WriteString(m.viewHeader())
 	b.WriteString("\n\n")
 
 	now := m.now()
@@ -590,7 +616,7 @@ func truncate(s string, n int) string {
 // networksView renders the configured networks/VLANs (read-only).
 func (m Model) networksView() string {
 	var b strings.Builder
-	b.WriteString(m.viewHeader(fmt.Sprintf("  networks (%d)", len(m.networks))))
+	b.WriteString(m.viewHeader())
 	b.WriteString("\n\n")
 
 	switch {
@@ -628,7 +654,7 @@ func (m Model) networkRow(n firewalla.Network, selected bool) string {
 // wansView renders the internet uplinks and their live health (read-only).
 func (m Model) wansView() string {
 	var b strings.Builder
-	b.WriteString(m.viewHeader(fmt.Sprintf("  wan (%d)", len(m.wans))))
+	b.WriteString(m.viewHeader())
 	b.WriteString("\n\n")
 
 	switch {
@@ -680,7 +706,7 @@ func (m Model) wanHealth(w firewalla.WAN) (string, lipgloss.Style) {
 // dataUsageView renders the data-plan summary and per-WAN usage (read-only).
 func (m Model) dataUsageView() string {
 	var b strings.Builder
-	b.WriteString(m.viewHeader("  data usage"))
+	b.WriteString(m.viewHeader())
 	b.WriteString("\n\n")
 
 	switch {
@@ -734,7 +760,7 @@ func (m Model) dataUsageView() string {
 // topView renders the bandwidth ranking as a horizontal bar chart.
 func (m Model) topView() string {
 	var b strings.Builder
-	b.WriteString(m.viewHeader(fmt.Sprintf("  top talkers (%d)", len(m.topTalkers))))
+	b.WriteString(m.viewHeader())
 	b.WriteString("\n\n")
 
 	switch {

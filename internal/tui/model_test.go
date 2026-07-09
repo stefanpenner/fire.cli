@@ -410,7 +410,7 @@ func TestRulesView_OpensAndLists(t *testing.T) {
 	nm, _ = m.Update(rm)
 	m = nm.(Model)
 	v := m.View()
-	assert.Contains(t, v, "rules (2)")
+	assert.Contains(t, v, "rules 2") // count is shown in the active tab
 	assert.Contains(t, v, "ads.example.net")
 	assert.Contains(t, v, "on")  // rule 10 enabled
 	assert.Contains(t, v, "off") // rule 11 disabled
@@ -514,7 +514,7 @@ func TestAlarmsView_OpensAndLists(t *testing.T) {
 	nm, _ = m.Update(am)
 	m = nm.(Model)
 	v := m.View()
-	assert.Contains(t, v, "alarms (2)")
+	assert.Contains(t, v, "alarms 2")
 	assert.Contains(t, v, "Port Scan")
 	assert.Contains(t, v, "2297")
 }
@@ -591,7 +591,7 @@ func TestNetworksView_OpensAndLists(t *testing.T) {
 	nm, _ = m.Update(nmsg)
 	m = nm.(Model)
 	v := m.View()
-	assert.Contains(t, v, "networks (2)")
+	assert.Contains(t, v, "networks 2")
 	assert.Contains(t, v, "IoT")
 	assert.Contains(t, v, "vlan 2001")
 	assert.Contains(t, v, "192.0.2.64/26")
@@ -638,7 +638,7 @@ func TestWANView_OpensAndShowsHealth(t *testing.T) {
 	nm, _ = m.Update(wm)
 	m = nm.(Model)
 	v := m.View()
-	assert.Contains(t, v, "wan (2)")
+	assert.Contains(t, v, "wan 2")
 	assert.Contains(t, v, "ISP-A")
 	assert.Contains(t, v, "healthy")
 	assert.Contains(t, v, "down") // ISP-B has no carrier
@@ -678,7 +678,7 @@ func TestDataView_ShowsPlanAndPerWAN(t *testing.T) {
 	nm, _ = m.Update(dm)
 	m = nm.(Model)
 	v := m.View()
-	assert.Contains(t, v, "data usage")
+	assert.Contains(t, v, "plan")   // data view content (the name line is gone)
 	assert.Contains(t, v, "plan")   // summary line
 	assert.Contains(t, v, "ISP-A")  // uuid resolved to name
 	assert.Contains(t, v, "1.0 MB") // download

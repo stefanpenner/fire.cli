@@ -19,7 +19,7 @@ func TestTopView_RanksWithBars(t *testing.T) {
 	nm, _ = m.Update(topMsg{talkers: ds.topTalkers})
 	m = nm.(Model)
 	v := m.View()
-	assert.Contains(t, v, "top talkers (2)")
+	assert.Contains(t, v, "top 2")         // count in the active tab
 	assert.Contains(t, v, "Example Phone") // AA:...:01 resolved to its device name
 	assert.Contains(t, v, "█")             // a bar was drawn
 	assert.Contains(t, v, "4.0 GB")        // humanized total (down+up) for the top talker

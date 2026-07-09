@@ -1,7 +1,7 @@
 ╭───────────────────────────────────────────────────────────────────────────╮
 │ Keyboard Shortcuts                                                        │
 │                                                                           │
-│   ↑/k, ↓/j        Move selection                                          │
+│   ↑/k, ↓/j        Move selection (or mouse wheel)                         │
 │   g / G           Jump to top / bottom                                    │
 │   tab / ⇧tab      Next / previous view                                    │
 │   h/l, ←/→        Previous / next view                                    │
