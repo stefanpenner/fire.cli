@@ -6,33 +6,54 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stefanpenner/fire.cli/internal/firewalla"
 )
 
-// View renders the dashboard.
+// View renders the dashboard inside a rounded frame with a floating title
+// badge (the otel-explorer look). The help modal draws its own border, so it
+// is shown unframed.
 func (m Model) View() string {
 	if m.showHelp {
 		return m.helpView()
 	}
+	inner := m
+	inner.width = max(m.width-4, 20)  // room for "│ " … " │"
+	inner.height = max(m.height-2, 3) // room for the top and bottom borders
+	return m.frame(anchorFooter(inner.renderBody(), inner.height))
+}
+
+// anchorFooter pads a body up to height lines by inserting blanks before its
+// last line, so the footer statusline sits on the bottom border (the
+// otel-explorer layout) rather than floating under short content.
+func anchorFooter(body string, height int) string {
+	lines := strings.Split(body, "\n")
+	if len(lines) >= height || len(lines) == 0 {
+		return body
+	}
+	footer := lines[len(lines)-1]
+	pad := make([]string, height-len(lines))
+	lines = append(lines[:len(lines)-1], append(pad, footer)...)
+	return strings.Join(lines, "\n")
+}
+
+// renderBody renders the active view's content (unframed).
+func (m Model) renderBody() string {
 	if m.detail != nil {
 		return m.detailView()
 	}
-	if m.view == ruleView {
+	switch m.view {
+	case ruleView:
 		return m.rulesView()
-	}
-	if m.view == alarmView {
+	case alarmView:
 		return m.alarmsView()
-	}
-	if m.view == networkView {
+	case networkView:
 		return m.networksView()
-	}
-	if m.view == wanView {
+	case wanView:
 		return m.wansView()
-	}
-	if m.view == dataView {
+	case dataView:
 		return m.dataUsageView()
 	}
-
 	var b strings.Builder
 	b.WriteString(m.headerView())
 	b.WriteString("\n")
@@ -41,6 +62,49 @@ func (m Model) View() string {
 	b.WriteString(m.listView())
 	b.WriteString("\n")
 	b.WriteString(m.footerView())
+	return b.String()
+}
+
+// frame wraps body in a rounded border sized to width×height, with a floating
+// "🔥 fire" badge spliced into the top edge — matching stefanpenner/otel-explorer.
+func (m Model) frame(body string) string {
+	w, h := m.width, m.height
+	if w < 20 {
+		w = 20
+	}
+	if h < 3 {
+		h = 3
+	}
+	innerW := w - 4 // "│ " + content + " │"
+
+	badge := m.styles.TitleBadge.Render(" 🔥 fire ")
+	leftPad := 2
+	rightPad := w - 2 - leftPad - lipgloss.Width(badge)
+	if rightPad < 1 {
+		rightPad = 1
+	}
+	top := m.styles.Border.Render("╭"+strings.Repeat("─", leftPad)) + badge +
+		m.styles.Border.Render(strings.Repeat("─", rightPad)+"╮")
+
+	bar := m.styles.Border.Render("│")
+	lines := strings.Split(body, "\n")
+	var b strings.Builder
+	b.WriteString(top + "\n")
+	for i := 0; i < h-2; i++ {
+		line := ""
+		if i < len(lines) {
+			line = lines[i]
+		}
+		if lipgloss.Width(line) > innerW {
+			line = ansi.Truncate(line, innerW, "…")
+		}
+		pad := innerW - lipgloss.Width(line)
+		if pad < 0 {
+			pad = 0
+		}
+		b.WriteString(bar + " " + line + strings.Repeat(" ", pad) + " " + bar + "\n")
+	}
+	b.WriteString(m.styles.Border.Render("╰" + strings.Repeat("─", w-2) + "╯"))
 	return b.String()
 }
 
@@ -74,9 +138,10 @@ func (m Model) tabBar() string {
 	return strings.Join(parts, m.styles.TabInactive.Render("│"))
 }
 
-// viewHeader renders a non-device view's title line plus the tab bar.
+// viewHeader renders a non-device view's context line plus the tab bar. The
+// "🔥 fire" title lives on the frame border, so it is not repeated here.
 func (m Model) viewHeader(suffix string) string {
-	return m.styles.TitleBadge.Render("🔥 fire") + m.styles.Subtle.Render(suffix) + "\n" + m.tabBar()
+	return m.styles.Subtle.Render(strings.TrimLeft(suffix, " ")) + "\n" + m.tabBar()
 }
 
 func (m Model) headerView() string {
@@ -91,12 +156,12 @@ func (m Model) headerView() string {
 			online++
 		}
 	}
-	title := m.styles.TitleBadge.Render("🔥 fire") + m.styles.Subtle.Render("  "+host)
 	countText := fmt.Sprintf("%d devices • %d online", len(m.devices), online)
 	if m.onlineOnly {
 		countText += " • online only"
 	}
-	return title + "   " + m.styles.Subtle.Render(countText)
+	// The "🔥 fire" title is on the frame border; the header shows host + stats.
+	return m.styles.Header.Render(host) + "   " + m.styles.Subtle.Render(countText)
 }
 
 func (m Model) listView() string {
@@ -182,7 +247,9 @@ func (m Model) statusBar(help string) string {
 		if every <= 0 {
 			every = defaultRefresh
 		}
-		left += " " + m.styles.Online.Render("⟳ live "+every.String())
+		// A spinning glyph makes live mode visibly active (it advances on each
+		// refresh tick), not just a static label.
+		left += " " + m.spinner.View() + m.styles.Online.Render("live "+every.String())
 	}
 	if m.status != "" {
 		left += " " + m.styles.Status.Render(m.status)

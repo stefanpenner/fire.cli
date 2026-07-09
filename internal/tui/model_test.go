@@ -123,7 +123,7 @@ func firstMsg(cmd tea.Cmd) tea.Msg {
 		if len(batch) == 0 || batch[0] == nil {
 			return nil
 		}
-		return batch[0]()
+		return firstMsg(batch[0]) // the load is always the batch's first cmd
 	}
 	return msg
 }
